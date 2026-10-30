@@ -4,9 +4,9 @@
 set -euo pipefail
 
 # Windows 的 Git Bash 会把 "/CN=..." 这类参数当路径转换成盘符路径，
-# 关掉转换才能让 openssl 的 -subj 原样到达（其它平台无此变量，无害）。
-export MSYS_NO_PATHCONV=1
-export MSYS2_ARG_CONV_EXCL="*"
+# 但全部关闭转换（MSYS_NO_PATHCONV）又会让 openssl 读不懂 POSIX 路径。
+# 只排除以 /CN= 开头的参数：路径照常转换，subject 原样直达。
+export MSYS2_ARG_CONV_EXCL='/CN='
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/assets/certs"
 mkdir -p "$DIR"

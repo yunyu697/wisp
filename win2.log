@@ -1,0 +1,250 @@
+﻿2026-10-30T21:20:08.5759202Z Current runner version: '2.338.2'
+2026-10-30T21:20:08.5794903Z ##[group]Runner Image Provisioner
+2026-10-30T21:20:08.5796226Z Hosted Compute Agent
+2026-10-30T21:20:08.5797051Z Version: 20261021.618
+2026-10-30T21:20:08.5797996Z Commit: 21505ad2541d5be6135ed84fc33697146cf75b8e
+2026-10-30T21:20:08.5799170Z Build Date: 2026-10-21T00:45:21Z
+2026-10-30T21:20:08.5800685Z Worker ID: {3e3ab0da-5e86-4ca8-8276-15e6b15ccea9}
+2026-10-30T21:20:08.5801916Z Region: westus2
+2026-10-30T21:20:08.5802763Z Cloud: Azure
+2026-10-30T21:20:08.5803563Z ##[endgroup]
+2026-10-30T21:20:08.5806264Z ##[group]Operating System
+2026-10-30T21:20:08.5807342Z Microsoft Windows Server 2025
+2026-10-30T21:20:08.5808404Z 10.0.26100
+2026-10-30T21:20:08.5809326Z Datacenter
+2026-10-30T21:20:08.5810203Z ##[endgroup]
+2026-10-30T21:20:08.5811153Z ##[group]Runner Image
+2026-10-30T21:20:08.5812207Z Image: windows-2025-vs2026
+2026-10-30T21:20:08.5813245Z Version: 20261021.278.1
+2026-10-30T21:20:08.5815607Z Included Software: https://github.com/actions/runner-images/blob/win25-vs2026/20261021.278/images/windows/Windows2025-VS2026-Readme.md
+2026-10-30T21:20:08.5818602Z Image Release: https://github.com/actions/runner-images/releases/tag/win25-vs2026%2F20261021.278
+2026-10-30T21:20:08.5820501Z ##[endgroup]
+2026-10-30T21:20:08.5822440Z ##[group]GITHUB_TOKEN Permissions
+2026-10-30T21:20:08.5825119Z Contents: write
+2026-10-30T21:20:08.5826517Z Metadata: read
+2026-10-30T21:20:08.5827514Z ##[endgroup]
+2026-10-30T21:20:08.5830731Z Secret source: Actions
+2026-10-30T21:20:08.5832315Z Cache mode: write
+2026-10-30T21:20:08.5833522Z Prepare workflow directory
+2026-10-30T21:20:08.6442857Z Prepare all required actions
+2026-10-30T21:20:08.6528453Z Getting action download info
+2026-10-30T21:20:09.0094528Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-10-30T21:20:09.1444194Z Download action repository 'actions/setup-java@v4' (SHA:cf277c60eb25467037889841efdb72551f06f6c3)
+2026-10-30T21:20:09.5472492Z Download action repository 'subosito/flutter-action@v2' (SHA:1a449444c387b1966244ae4d4f8c696479add0b2)
+2026-10-30T21:20:09.6977824Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+2026-10-30T21:20:10.2676473Z Getting action download info
+2026-10-30T21:20:10.3914317Z Download action repository 'actions/cache@v5' (SHA:caa296126883cff596d87d8935842f9db880ef25)
+2026-10-30T21:20:10.8990923Z Complete job name: Build windows
+2026-10-30T21:20:11.1200298Z ##[group]Run actions/checkout@v4
+2026-10-30T21:20:11.1201278Z with:
+2026-10-30T21:20:11.1201698Z   repository: yunyu697/wisp
+2026-10-30T21:20:11.1204800Z   token: ***
+2026-10-30T21:20:11.1205204Z   ssh-strict: true
+2026-10-30T21:20:11.1205612Z   ssh-user: git
+2026-10-30T21:20:11.1206033Z   persist-credentials: true
+2026-10-30T21:20:11.1206472Z   clean: true
+2026-10-30T21:20:11.1206902Z   sparse-checkout-cone-mode: true
+2026-10-30T21:20:11.1207368Z   fetch-depth: 1
+2026-10-30T21:20:11.1207770Z   fetch-tags: false
+2026-10-30T21:20:11.1208204Z   show-progress: true
+2026-10-30T21:20:11.1208614Z   lfs: false
+2026-10-30T21:20:11.1208993Z   submodules: false
+2026-10-30T21:20:11.1209402Z   set-safe-directory: true
+2026-10-30T21:20:11.1209863Z   allow-unsafe-pr-checkout: false
+2026-10-30T21:20:11.1210593Z env:
+2026-10-30T21:20:11.1210987Z   FLUTTER_VERSION: 3.47.8
+2026-10-30T21:20:11.1211405Z ##[endgroup]
+2026-10-30T21:20:11.2728967Z Syncing repository: yunyu697/wisp
+2026-10-30T21:20:11.2730886Z ##[group]Getting Git version info
+2026-10-30T21:20:11.2731479Z Working directory is 'D:\a\wisp\wisp'
+2026-10-30T21:20:11.3675056Z [command]"C:\Program Files\Git\bin\git.exe" version
+2026-10-30T21:20:11.7109952Z git version 2.56.0.windows.2
+2026-10-30T21:20:11.7171524Z ##[endgroup]
+2026-10-30T21:20:11.7192699Z Temporarily overriding HOME='D:\a\_temp\ed7f9942-db23-4312-bfd8-ee92145d0f67' before making global git config changes
+2026-10-30T21:20:11.7194541Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-30T21:20:11.7204498Z [command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\wisp\wisp
+2026-10-30T21:20:11.7840218Z Deleting the contents of 'D:\a\wisp\wisp'
+2026-10-30T21:20:11.7846784Z ##[group]Initializing the repository
+2026-10-30T21:20:11.7855593Z [command]"C:\Program Files\Git\bin\git.exe" init D:\a\wisp\wisp
+2026-10-30T21:20:11.8830400Z Initialized empty Git repository in D:/a/wisp/wisp/.git/
+2026-10-30T21:20:11.8894265Z [command]"C:\Program Files\Git\bin\git.exe" remote add origin https://github.com/yunyu697/wisp
+2026-10-30T21:20:12.0441296Z ##[endgroup]
+2026-10-30T21:20:12.0442662Z ##[group]Disabling automatic garbage collection
+2026-10-30T21:20:12.0454635Z [command]"C:\Program Files\Git\bin\git.exe" config --local gc.auto 0
+2026-10-30T21:20:12.0931290Z ##[endgroup]
+2026-10-30T21:20:12.0933240Z ##[group]Setting up auth
+2026-10-30T21:20:12.0953421Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-10-30T21:20:12.1378394Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-10-30T21:20:13.6486595Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-30T21:20:13.6867859Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-10-30T21:20:14.2539146Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-30T21:20:14.2925441Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-10-30T21:20:14.8313561Z [command]"C:\Program Files\Git\bin\git.exe" config --local http.https://github.com/.extraheader "AUTHORIZATION: basic ***"
+2026-10-30T21:20:14.8704035Z ##[endgroup]
+2026-10-30T21:20:14.8704995Z ##[group]Fetching the repository
+2026-10-30T21:20:14.8717073Z [command]"C:\Program Files\Git\bin\git.exe" -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +c20e9fd301fd83a894ea3f4cd56838c7d68eaeb3:refs/tags/v1.0.14
+2026-10-30T21:20:15.9443611Z From https://github.com/yunyu697/wisp
+2026-10-30T21:20:15.9444229Z  * [new ref]         c20e9fd301fd83a894ea3f4cd56838c7d68eaeb3 -> v1.0.14
+2026-10-30T21:20:15.9488671Z ##[endgroup]
+2026-10-30T21:20:15.9491360Z ##[group]Determining the checkout info
+2026-10-30T21:20:15.9492196Z ##[endgroup]
+2026-10-30T21:20:15.9502741Z [command]"C:\Program Files\Git\bin\git.exe" sparse-checkout disable
+2026-10-30T21:20:16.0022640Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset-all extensions.worktreeConfig
+2026-10-30T21:20:16.0409997Z ##[group]Checking out the ref
+2026-10-30T21:20:16.0418224Z [command]"C:\Program Files\Git\bin\git.exe" checkout --progress --force refs/tags/v1.0.14
+2026-10-30T21:20:16.2061564Z Note: switching to 'refs/tags/v1.0.14'.
+2026-10-30T21:20:16.2061856Z 
+2026-10-30T21:20:16.2062067Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-10-30T21:20:16.2062572Z changes and commit them, and you can discard any commits you make in this
+2026-10-30T21:20:16.2063267Z state without impacting any branches by switching back to a branch.
+2026-10-30T21:20:16.2063716Z 
+2026-10-30T21:20:16.2063902Z If you want to create a new branch to retain commits you create, you may
+2026-10-30T21:20:16.2064351Z do so (now or later) by using -c with the switch command. Example:
+2026-10-30T21:20:16.2064612Z 
+2026-10-30T21:20:16.2064734Z   git switch -c <new-branch-name>
+2026-10-30T21:20:16.2065187Z 
+2026-10-30T21:20:16.2065291Z Or undo this operation with:
+2026-10-30T21:20:16.2066349Z 
+2026-10-30T21:20:16.2066455Z   git switch -
+2026-10-30T21:20:16.2066576Z 
+2026-10-30T21:20:16.2066784Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-10-30T21:20:16.2067099Z 
+2026-10-30T21:20:16.2067761Z HEAD is now at c20e9fd 修复 CI：openssl -subj 被 Git Bash 路径转换毁掉；Android compileSdk 升到 36
+2026-10-30T21:20:16.2140115Z ##[endgroup]
+2026-10-30T21:20:16.2609360Z [command]"C:\Program Files\Git\bin\git.exe" log -1 --format=%H
+2026-10-30T21:20:16.2955362Z c20e9fd301fd83a894ea3f4cd56838c7d68eaeb3
+2026-10-30T21:20:16.3499293Z ##[group]Run subosito/flutter-action@v2
+2026-10-30T21:20:16.3499655Z with:
+2026-10-30T21:20:16.3499837Z   channel: stable
+2026-10-30T21:20:16.3500036Z   flutter-version: 3.47.8
+2026-10-30T21:20:16.3500245Z   cache: true
+2026-10-30T21:20:16.3500414Z   architecture: X64
+2026-10-30T21:20:16.3500606Z   pub-cache-path: default
+2026-10-30T21:20:16.3501254Z   dry-run: false
+2026-10-30T21:20:16.3501534Z   git-source: https://github.com/flutter/flutter.git
+2026-10-30T21:20:16.3501849Z env:
+2026-10-30T21:20:16.3502011Z   FLUTTER_VERSION: 3.47.8
+2026-10-30T21:20:16.3502204Z ##[endgroup]
+2026-10-30T21:20:16.3562202Z ##[start-action display=Make yq tool available on Windows runners;id=__subosito_flutter-action.__run]
+2026-10-30T21:20:16.3574576Z ##[end-action id=__subosito_flutter-action.__run;outcome=skipped;conclusion=skipped;duration_ms=0]
+2026-10-30T21:20:16.3577400Z ##[start-action display=Make setup script executable;id=__subosito_flutter-action.__run_2]
+2026-10-30T21:20:16.3727135Z ##[group]Run chmod +x "$GITHUB_ACTION_PATH/setup.sh"
+2026-10-30T21:20:16.3727527Z [36;1mchmod +x "$GITHUB_ACTION_PATH/setup.sh"[0m
+2026-10-30T21:20:16.3747683Z shell: C:\Program Files\Git\bin\bash.EXE --noprofile --norc -e -o pipefail {0}
+2026-10-30T21:20:16.3748093Z env:
+2026-10-30T21:20:16.3748266Z   FLUTTER_VERSION: 3.47.8
+2026-10-30T21:20:16.3748473Z ##[endgroup]
+2026-10-30T21:20:16.5700930Z ##[end-action id=__subosito_flutter-action.__run_2;outcome=success;conclusion=success;duration_ms=212]
+2026-10-30T21:20:16.5703719Z ##[start-action display=Set action inputs;id=__subosito_flutter-action.flutter-action]
+2026-10-30T21:20:16.5879863Z ##[group]Run $GITHUB_ACTION_PATH/setup.sh -p \
+2026-10-30T21:20:16.5880236Z [36;1m$GITHUB_ACTION_PATH/setup.sh -p \[0m
+2026-10-30T21:20:16.5880513Z [36;1m  -n '3.47.8' \[0m
+2026-10-30T21:20:16.5880722Z [36;1m  -f '' \[0m
+2026-10-30T21:20:16.5880905Z [36;1m  -a 'X64' \[0m
+2026-10-30T21:20:16.5881091Z [36;1m  -k '' \[0m
+2026-10-30T21:20:16.5881270Z [36;1m  -c '' \[0m
+2026-10-30T21:20:16.5881439Z [36;1m  -l '' \[0m
+2026-10-30T21:20:16.5881618Z [36;1m  -d 'default' \[0m
+2026-10-30T21:20:16.5881907Z [36;1m  -g 'https://github.com/flutter/flutter.git' \[0m
+2026-10-30T21:20:16.5882214Z [36;1m  stable[0m
+2026-10-30T21:20:16.5898186Z shell: C:\Program Files\Git\bin\bash.EXE --noprofile --norc -e -o pipefail {0}
+2026-10-30T21:20:16.5898593Z env:
+2026-10-30T21:20:16.5898772Z   FLUTTER_VERSION: 3.47.8
+2026-10-30T21:20:16.5899001Z ##[endgroup]
+2026-10-30T21:20:19.7757382Z ##[end-action id=__subosito_flutter-action.flutter-action;outcome=success;conclusion=success;duration_ms=3205]
+2026-10-30T21:20:19.7762003Z ##[start-action display=Cache Flutter;id=__subosito_flutter-action.cache-flutter]
+2026-10-30T21:20:19.7919029Z ##[group]Run actions/cache@v5
+2026-10-30T21:20:19.7919266Z with:
+2026-10-30T21:20:19.7919516Z   path: C:\hostedtoolcache\windows\flutter\stable-3.47.8-x64
+2026-10-30T21:20:19.7920014Z   key: flutter-windows-stable-3.47.8-x64-737ba8f885dc774b53b442759999a312c9461e4e
+2026-10-30T21:20:19.7920439Z   enableCrossOsArchive: false
+2026-10-30T21:20:19.7920674Z   fail-on-cache-miss: false
+2026-10-30T21:20:19.7920883Z   lookup-only: false
+2026-10-30T21:20:19.7921069Z   save-always: false
+2026-10-30T21:20:19.7921240Z env:
+2026-10-30T21:20:19.7921400Z   FLUTTER_VERSION: 3.47.8
+2026-10-30T21:20:19.7921595Z ##[endgroup]
+2026-10-30T21:20:20.3485351Z Cache not found for input keys: flutter-windows-stable-3.47.8-x64-737ba8f885dc774b53b442759999a312c9461e4e
+2026-10-30T21:20:20.3602100Z ##[end-action id=__subosito_flutter-action.cache-flutter;outcome=success;conclusion=success;duration_ms=583]
+2026-10-30T21:20:20.3604983Z ##[start-action display=Cache pub dependencies;id=__subosito_flutter-action.cache-pub]
+2026-10-30T21:20:20.5590118Z ##[group]Run actions/cache@v5
+2026-10-30T21:20:20.5590346Z with:
+2026-10-30T21:20:20.5590564Z   path: C:\Users\runneradmin\AppData\Local\Pub\Cache
+2026-10-30T21:20:20.5594770Z   key: flutter-pub-windows-stable-3.47.8-x64-737ba8f885dc774b53b442759999a312c9461e4e-1a3ea04e4870eb0ad451a05f3d4b628a047b189e8cf6c5f72150c97c6db9077b
+2026-10-30T21:20:20.5595627Z   enableCrossOsArchive: false
+2026-10-30T21:20:20.5595868Z   fail-on-cache-miss: false
+2026-10-30T21:20:20.5596087Z   lookup-only: false
+2026-10-30T21:20:20.5596278Z   save-always: false
+2026-10-30T21:20:20.5596451Z env:
+2026-10-30T21:20:20.5596613Z   FLUTTER_VERSION: 3.47.8
+2026-10-30T21:20:20.5596824Z ##[endgroup]
+2026-10-30T21:20:21.1102081Z Cache not found for input keys: flutter-pub-windows-stable-3.47.8-x64-737ba8f885dc774b53b442759999a312c9461e4e-1a3ea04e4870eb0ad451a05f3d4b628a047b189e8cf6c5f72150c97c6db9077b
+2026-10-30T21:20:21.1229660Z ##[end-action id=__subosito_flutter-action.cache-pub;outcome=success;conclusion=success;duration_ms=762]
+2026-10-30T21:20:21.1233528Z ##[start-action display=Run setup script;id=__subosito_flutter-action.__run_3]
+2026-10-30T21:20:21.1411404Z ##[group]Run $GITHUB_ACTION_PATH/setup.sh \
+2026-10-30T21:20:21.1411738Z [36;1m$GITHUB_ACTION_PATH/setup.sh \[0m
+2026-10-30T21:20:21.1411996Z [36;1m  -n '3.47.8' \[0m
+2026-10-30T21:20:21.1412202Z [36;1m  -a 'x64' \[0m
+2026-10-30T21:20:21.1412495Z [36;1m  -c 'C:\hostedtoolcache\windows\flutter\stable-3.47.8-x64' \[0m
+2026-10-30T21:20:21.1412909Z [36;1m  -d 'C:\Users\runneradmin\AppData\Local\Pub\Cache' \[0m
+2026-10-30T21:20:21.1413210Z [36;1m  stable[0m
+2026-10-30T21:20:21.1427779Z shell: C:\Program Files\Git\bin\bash.EXE --noprofile --norc -e -o pipefail {0}
+2026-10-30T21:20:21.1428186Z env:
+2026-10-30T21:20:21.1428355Z   FLUTTER_VERSION: 3.47.8
+2026-10-30T21:20:21.1428562Z ##[endgroup]
+2026-10-30T21:20:23.9555444Z   % Total    % Received % Xferd  Average Speed  Time    Time    Time   Current
+2026-10-30T21:20:23.9556133Z                                  Dload  Upload  Total   Spent   Left   Speed
+2026-10-30T21:20:23.9556778Z 
+2026-10-30T21:20:24.9562568Z   0      0   0      0   0      0      0      0                              0
+2026-10-30T21:20:25.9577643Z   7  1.80G   7 141.1M   0      0 133.8M      0   00:13   00:01   00:12 141.0M
+2026-10-30T21:20:26.9578627Z  21  1.80G  21 400.5M   0      0 194.8M      0   00:09   00:02   00:07 200.0M
+2026-10-30T21:20:28.0655820Z  41  1.80G  41 758.3M   0      0 248.1M      0   00:07   00:03   00:04 252.5M
+2026-10-30T21:20:29.0696424Z  56  1.80G  56  1.02G   0      0 251.2M      0   00:07   00:04   00:03 254.5M
+2026-10-30T21:20:30.0697193Z  74  1.80G  74  1.34G   0      0 266.1M      0   00:06   00:05   00:01 268.9M
+2026-10-30T21:20:30.3571862Z  94  1.80G  94  1.70G   0      0 282.6M      0   00:06   00:06         313.2M
+2026-10-30T21:20:30.3573272Z 100  1.80G 100  1.80G   0      0 286.1M      0   00:06   00:06         313.2M
+2026-10-30T21:20:30.3574809Z 100  1.80G 100  1.80G   0      0 286.1M      0   00:06   00:06         313.2M
+2026-10-30T21:20:30.3575989Z 100  1.80G 100  1.80G   0      0 286.1M      0   00:06   00:06         313.2M
+2026-10-30T21:21:47.7749422Z ##[end-action id=__subosito_flutter-action.__run_3;outcome=success;conclusion=success;duration_ms=86650]
+2026-10-30T21:21:47.7931702Z ##[group]Run echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+2026-10-30T21:21:47.7932221Z [36;1mecho "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"[0m
+2026-10-30T21:21:47.7951820Z shell: C:\Program Files\Git\bin\bash.EXE --noprofile --norc -e -o pipefail {0}
+2026-10-30T21:21:47.7952214Z env:
+2026-10-30T21:21:47.7952391Z   FLUTTER_VERSION: 3.47.8
+2026-10-30T21:21:47.7952911Z   FLUTTER_ROOT: C:\hostedtoolcache\windows\flutter\stable-3.47.8-x64/flutter
+2026-10-30T21:21:47.7953335Z   PUB_CACHE: C:\Users\runneradmin\AppData\Local\Pub\Cache
+2026-10-30T21:21:47.7953631Z ##[endgroup]
+2026-10-30T21:21:47.8547221Z ##[group]Run bash tools/gen_cert.sh
+2026-10-30T21:21:47.8547591Z [36;1mbash tools/gen_cert.sh[0m
+2026-10-30T21:21:47.8568796Z shell: C:\Program Files\Git\bin\bash.EXE --noprofile --norc -e -o pipefail {0}
+2026-10-30T21:21:47.8569193Z env:
+2026-10-30T21:21:47.8569376Z   FLUTTER_VERSION: 3.47.8
+2026-10-30T21:21:47.8569711Z   FLUTTER_ROOT: C:\hostedtoolcache\windows\flutter\stable-3.47.8-x64/flutter
+2026-10-30T21:21:47.8570155Z   PUB_CACHE: C:\Users\runneradmin\AppData\Local\Pub\Cache
+2026-10-30T21:21:47.8570453Z   VERSION: 1.0.14
+2026-10-30T21:21:47.8570637Z ##[endgroup]
+2026-10-30T21:21:48.4815341Z ..+.+..+.........+......+....+...+......+.....+.+...+.....+......+.+........+.+.........+...+..+...+...+............+...+....+..+++++++++++++++++++++++++++++++++++++++*......+++++++++++++++++++++++++++++++++++++++*.......+.....+.......+..+.+..............+.............+............+..+.............+......+..+...............+...+.+.....+.+.........+........+...+..........+..............+.+...+.........+..+.+..............+...+.+.....+.+...+.....+...+...+.+........+.+......+......+..+............+...+..........+........+.......+...+............+.....+.+.....+.+......+..+.+..+...+....+..+..................+.+............+...............+..............+.+..+.+......+...+.....+...+...............+...+.+.....+.+..+.......+.....+.+...............+.........+.........+..++++++
+2026-10-30T21:21:48.4993223Z ..+...+..+...+.......+..+....+.....+.+...+......+...........+++++++++++++++++++++++++++++++++++++++*..+.........+.+...+..+.........+......+.+..+++++++++++++++++++++++++++++++++++++++*...+..+.........+......+.............+..+....+..+.............+...........+....+............+..+.+..............+......+.+...+......+..+.......+.....+............+...+.......+......+...+..+..........+...+...........+....+......+...+........+..................+......+...++++++
+2026-10-30T21:21:48.5025153Z req: Can't open "/d/a/wisp/wisp/assets/certs/key.pem" for writing, No such file or directory
+2026-10-30T21:21:48.5131325Z ##[error]Process completed with exit code 1.
+2026-10-30T21:21:48.5472134Z Post job cleanup.
+2026-10-30T21:21:48.5476185Z ##[start-action display=Cache pub dependencies;id=__6f563608-d656-4e2f-9b79-548a49077e93.cache-pub]
+2026-10-30T21:21:48.5478445Z ##[end-action id=__6f563608-d656-4e2f-9b79-548a49077e93.cache-pub;outcome=skipped;conclusion=skipped;duration_ms=0]
+2026-10-30T21:21:48.5480598Z ##[start-action display=Cache Flutter;id=__6f563608-d656-4e2f-9b79-548a49077e93.cache-flutter]
+2026-10-30T21:21:48.5482817Z ##[end-action id=__6f563608-d656-4e2f-9b79-548a49077e93.cache-flutter;outcome=skipped;conclusion=skipped;duration_ms=0]
+2026-10-30T21:21:48.5672219Z Post job cleanup.
+2026-10-30T21:21:48.7881604Z [command]"C:\Program Files\Git\bin\git.exe" version
+2026-10-30T21:21:48.8331892Z git version 2.56.0.windows.2
+2026-10-30T21:21:48.8415534Z Temporarily overriding HOME='D:\a\_temp\d36f685c-1835-46f2-836d-edeb45da7115' before making global git config changes
+2026-10-30T21:21:48.8416812Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-30T21:21:48.8428407Z [command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\wisp\wisp
+2026-10-30T21:21:48.8877684Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-10-30T21:21:48.9318746Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-10-30T21:21:49.4990261Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-30T21:21:49.5341310Z http.https://github.com/.extraheader
+2026-10-30T21:21:49.5387710Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset-all http.https://github.com/.extraheader
+2026-10-30T21:21:49.5778942Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-10-30T21:21:50.1304709Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-30T21:21:50.1713727Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-10-30T21:21:50.8306913Z Cleaning up orphan processes
+2026-10-30T21:21:50.8392724Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
