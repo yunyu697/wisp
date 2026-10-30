@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Wisp
+Type=Application
+Comment=LAN file transfer, LocalSend compatible
+Comment[zh_CN]=局域网文件互传
+Exec=wisp
+Icon=wisp
+Terminal=false
+Categories=Network;FileTransfer;Utility;
+StartupWMClass=wisp
+Keywords=wisp;send;transfer;airdrop;localsend;

@@ -1,8 +1,11 @@
 # 四平台打包 + 发布 Release。
 # 触发：推送 v* 标签（如 v1.0.14），或手动 workflow_dispatch。
-# 产物命名与 update.json 的 downloadUrl 对齐：
-#   wisp-windows-x64-<版本>.zip / wisp-macos-<版本>.zip
-#   wisp-linux-x64-<版本>.tar.gz / wisp-android-<版本>.apk
+# 产物（版本号取自标签）：
+#   Windows  wisp-windows-x64-<v>.zip（便携） + wisp-windows-x64-<v>-setup.exe（Inno Setup 安装包）
+#   macOS    wisp-macos-<v>.zip（便携） + wisp-macos-<v>.dmg（拖入 Applications）
+#   Linux    wisp-linux-x64-<v>.tar.gz（便携） + .deb / .rpm（fpm）+ .AppImage（linuxdeploy）
+#   Android  wisp-android-<v>.apk
+# update.json 的 downloadUrl 指向 Windows 安装包。
 #
 # TLS 证书说明：assets/certs 的私钥不入库（见 .gitignore）。
 # 每个平台的构建任务在打包前现场生成各自的 10 年自签证书——
@@ -59,12 +62,13 @@ jobs:
         shell: bash
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
-      # Linux 桌面构建的编译链依赖。
+      # Linux 桌面构建的编译链依赖 + 打包工具（ImageMagick 缩图标，fpm 产 deb/rpm）。
       - name: Install Linux build deps
         if: matrix.target == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build libgtk-3-dev
+          sudo apt-get install -y ninja-build libgtk-3-dev imagemagick
+          sudo gem install fpm --no-document
 
       # 现场生成自签证书，让 TLS 开关在发布包里真正可用。
       - name: Generate self-signed certificate
@@ -88,6 +92,7 @@ jobs:
         run: flutter build apk --release
 
       # ---------- 打包 ----------
+      # 便携 zip + Inno Setup 安装包，双形态都给。
       - name: Package (windows)
         if: matrix.target == 'windows'
         shell: pwsh
@@ -95,6 +100,13 @@ jobs:
           Compress-Archive -Path "build/windows/x64/runner/Release/*" `
             -DestinationPath "wisp-windows-x64-${env:VERSION}.zip"
 
+      - name: Package (windows installer)
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=$env:VERSION /O. packaging\windows\wisp.iss
+
+      # 便携 zip + DMG（拖入 Applications 的安装镜像）。
       - name: Package (macos)
         if: matrix.target == 'macos'
         shell: bash
@@ -103,11 +115,65 @@ jobs:
           cd build/macos/Build/Products/Release
           zip -r -y "$GITHUB_WORKSPACE/wisp-macos-${VERSION}.zip" wisp.app
 
-      - name: Package (linux)
+      - name: Package (macos dmg)
+        if: matrix.target == 'macos'
+        shell: bash
+        run: |
+          mkdir -p dmg-src
+          cp -R build/macos/Build/Products/Release/wisp.app dmg-src/
+          ln -s /Applications dmg-src/Applications
+          hdiutil create -volname Wisp -srcfolder dmg-src -ov -format UDZO "wisp-macos-${VERSION}.dmg"
+
+      # tar.gz 便携包 + deb/rpm（fpm）+ AppImage（linuxdeploy）。
+      - name: Package (linux tarball)
         if: matrix.target == 'linux'
         shell: bash
         run: |
-          tar -czf "wisp-linux-x64-${VERSION}.tar.gz" -C build/linux/x64/release .
+          tar -czf "wisp-linux-x64-${VERSION}.tar.gz" -C build/linux/x64/release/bundle .
+
+      - name: Package (linux deb/rpm)
+        if: matrix.target == 'linux'
+        shell: bash
+        run: |
+          chmod +x packaging/linux/wisp-wrapper.sh
+          convert assets/icon/wisp_icon_1024.png -resize 256x256 /tmp/wisp.png
+          COMMON_ARGS=(
+            -s dir -n wisp -v "$VERSION"
+            --url https://github.com/yunyu697/wisp
+            --description "Wisp - LAN file transfer, LocalSend compatible"
+            --maintainer "YuMEHa <yunyu697@users.noreply.github.com>"
+          )
+          fpm "${COMMON_ARGS[@]}" -t deb -a amd64 \
+            build/linux/x64/release/bundle/=/opt/wisp/ \
+            packaging/linux/wisp-wrapper.sh=/usr/bin/wisp \
+            packaging/linux/wisp.desktop=/usr/share/applications/wisp.desktop \
+            /tmp/wisp.png=/usr/share/pixmaps/wisp.png
+          fpm "${COMMON_ARGS[@]}" -t rpm -a x86_64 \
+            build/linux/x64/release/bundle/=/opt/wisp/ \
+            packaging/linux/wisp-wrapper.sh=/usr/bin/wisp \
+            packaging/linux/wisp.desktop=/usr/share/applications/wisp.desktop \
+            /tmp/wisp.png=/usr/share/pixmaps/wisp.png
+          mv "wisp_${VERSION}_amd64.deb" "wisp-linux-x64-${VERSION}.deb"
+          mv "wisp-${VERSION}.x86_64.rpm" "wisp-linux-x64-${VERSION}.rpm"
+
+      - name: Package (linux AppImage)
+        if: matrix.target == 'linux'
+        shell: bash
+        run: |
+          convert assets/icon/wisp_icon_1024.png -resize 256x256 /tmp/wisp.png
+          mkdir -p AppDir
+          cp -r build/linux/x64/release/bundle/* AppDir/
+          # 放 /tmp 避免干扰后面挑产物；无 FUSE 的 runner 要 extract-and-run。
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O /tmp/linuxdeploy.AppImage
+          chmod +x /tmp/linuxdeploy.AppImage
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          /tmp/linuxdeploy.AppImage \
+            --appdir AppDir \
+            --executable AppDir/wisp \
+            --desktop-file packaging/linux/wisp.desktop \
+            --icon-file /tmp/wisp.png \
+            --output appimage
+          mv *.AppImage "wisp-linux-x64-${VERSION}.AppImage"
 
       - name: Package (android)
         if: matrix.target == 'android'
@@ -121,8 +187,13 @@ jobs:
           name: wisp-${{ matrix.target }}
           path: |
             wisp-windows-*.zip
+            wisp-windows-*-setup.exe
             wisp-macos-*.zip
+            wisp-macos-*.dmg
             wisp-linux-*.tar.gz
+            wisp-linux-*.deb
+            wisp-linux-*.rpm
+            wisp-linux-*.AppImage
             wisp-android-*.apk
           if-no-files-found: error
 
