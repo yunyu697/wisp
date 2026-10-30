@@ -22,3 +22,4 @@ assets/certs/cert.pem
 # 系统
 .DS_Store
 Thumbs.db
+*.log
