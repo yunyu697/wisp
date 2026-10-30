@@ -30,8 +30,8 @@ PrivilegesRequired=admin
 UninstallDisplayIcon={app}\wisp.exe
 
 [Languages]
+; Runner's Inno Setup no longer ships ChineseSimplified.isl; keep default English.
 Name: "english"; MessagesFile: "compiler:Default.isl"
-Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
