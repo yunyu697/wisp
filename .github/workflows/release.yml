@@ -154,7 +154,8 @@ jobs:
             packaging/linux/wisp.desktop=/usr/share/applications/wisp.desktop \
             /tmp/wisp.png=/usr/share/pixmaps/wisp.png
           mv "wisp_${VERSION}_amd64.deb" "wisp-linux-x64-${VERSION}.deb"
-          mv "wisp-${VERSION}.x86_64.rpm" "wisp-linux-x64-${VERSION}.rpm"
+          # fpm 的 rpm 文件名自带 release 号（wisp-1.0.14-1.x86_64.rpm），用通配收编。
+          mv wisp-${VERSION}-*.x86_64.rpm "wisp-linux-x64-${VERSION}.rpm"
 
       - name: Package (linux AppImage)
         if: matrix.target == 'linux'

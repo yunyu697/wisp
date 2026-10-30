@@ -24,7 +24,6 @@ OutputDir=.
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
-Architectures=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 ; The app installs into Program Files; per-user install would not need admin.
 PrivilegesRequired=admin
