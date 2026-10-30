@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wisp · 设计预览</title>
+<style>
+  :root{
+    --indigo:#0E7C86; --azure:#23A2A9; --mint:#2FBF9A;
+    --bg:#F7F6F2; --surface:#FFFFFF; --alt:#EDEBE4; --line:#E5E2DA;
+    --text:#17191A; --sub:#6B7170; --success:#34C759; --warn:#FF9F0A; --danger:#FF3B30;
+    --radius:24px;
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{
+    margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Microsoft YaHei",Inter,sans-serif;
+    line-height:1.5;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:56px 28px 90px}
+  /* ---------- header ---------- */
+  .hero{display:flex;align-items:center;gap:22px;margin-bottom:12px}
+  .hero h1{font-size:40px;margin:0;letter-spacing:-1px;font-weight:700}
+  .hero p{margin:6px 0 0;color:var(--sub);font-size:15px}
+  .hero .mark{width:84px;height:84px;border-radius:20px;overflow:hidden;flex:none;
+    box-shadow:0 12px 30px rgba(14,124,134,.28)}
+  .meta{display:flex;gap:8px;flex-wrap:wrap;margin:26px 0 0}
+  .tag{font-size:12.5px;color:var(--sub);background:#fff;border:1px solid var(--line);
+    padding:6px 12px;border-radius:9px}
+  /* ---------- sections ---------- */
+  section{margin-top:64px}
+  .sec-title{display:flex;align-items:baseline;gap:12px;margin-bottom:8px}
+  .sec-title h2{font-size:22px;margin:0;letter-spacing:-.3px}
+  .sec-title span{font-size:13px;color:var(--sub)}
+  .sec-desc{color:var(--sub);font-size:14px;margin:0 0 26px;max-width:720px}
+  /* ---------- icon board ---------- */
+  .iconboard{display:flex;gap:28px;align-items:flex-end;flex-wrap:wrap;
+    background:#fff;border:1px solid var(--line);border-radius:26px;padding:34px}
+  .icon-lg{width:180px;height:180px;border-radius:41px;overflow:hidden;
+    box-shadow:0 22px 50px rgba(14,124,134,.30)}
+  .icon-md{width:88px;height:88px;border-radius:20px;overflow:hidden;
+    box-shadow:0 10px 24px rgba(14,124,134,.22)}
+  .icon-sm{width:44px;height:44px;border-radius:10px;overflow:hidden;
+    box-shadow:0 4px 12px rgba(14,124,134,.18)}
+  .icon-xs{width:28px;height:28px;border-radius:7px;overflow:hidden}
+  .icon-note{font-size:12.5px;color:var(--sub);margin-top:10px;text-align:center}
+  .icon-col{display:flex;flex-direction:column;align-items:center}
+  /* ---------- phones ---------- */
+  .phones{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));
+    gap:38px 26px;justify-items:center}
+  .phone{width:390px;height:844px;background:#0A0F10;border-radius:52px;padding:9px;
+    box-shadow:0 30px 60px rgba(23,25,26,.16), 0 2px 0 rgba(255,255,255,.6) inset}
+  .screen{width:100%;height:100%;background:var(--bg);border-radius:44px;overflow:hidden;
+    position:relative;display:flex;flex-direction:column}
+  .statusbar{height:44px;display:flex;align-items:center;justify-content:space-between;
+    padding:0 26px;font-size:12.5px;font-weight:600;color:var(--text);flex:none}
+  .body{flex:1;overflow:hidden;padding:0 20px}
+  .caption{margin-top:16px;text-align:center}
+  .caption b{font-size:14.5px;font-weight:600}
+  .caption p{margin:4px 0 0;font-size:12.5px;color:var(--sub)}
+  /* ---------- common bits ---------- */
+  .h1{font-size:34px;font-weight:700;letter-spacing:-.8px;line-height:1.15;margin:6px 0 4px}
+  .sub{font-size:12.5px;color:var(--sub)}
+  .card{background:#fff;border:1px solid var(--line);border-radius:20px}
+  .row{display:flex;align-items:center;gap:12px}
+  .grow{flex:1;min-width:0}
+  .ellip{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .avatar{width:46px;height:46px;border-radius:14px;display:flex;align-items:center;
+    justify-content:center;color:#fff;flex:none}
+  .av-a{background:linear-gradient(135deg,#0E7C86,#3AC8CB);box-shadow:0 6px 14px rgba(14,124,134,.30)}
+  .av-b{background:linear-gradient(135deg,#23A2A9,#6FD6D8);box-shadow:0 6px 14px rgba(35,162,169,.30)}
+  .av-c{background:linear-gradient(135deg,#2FBF9A,#63D9B6);box-shadow:0 6px 14px rgba(47,191,154,.28)}
+  .name{font-size:16px;font-weight:600;letter-spacing:-.2px}
+  .meta-line{font-size:12.5px;color:var(--sub)}
+  .chip{font-size:11.5px;font-weight:600;padding:4px 9px;border-radius:8px;display:inline-flex;
+    align-items:center;gap:4px}
+  .chip-indigo{color:var(--indigo);background:rgba(14,124,134,.10)}
+  .chip-green{color:var(--success);background:rgba(52,199,89,.12)}
+  .chev{color:#ADAFA8;flex:none}
+  .nav{flex:none;height:78px;background:rgba(255,255,255,.86);backdrop-filter:blur(26px);
+    border-top:1px solid var(--line);display:flex;align-items:center;padding-bottom:14px}
+  .nav .item{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;
+    font-size:10.5px;color:var(--sub);font-weight:500;position:relative;padding-top:6px}
+  .nav .item.on{color:var(--indigo);font-weight:600}
+  .nav .item.on::before{content:"";position:absolute;top:0;left:14%;right:14%;height:40px;
+    border-radius:14px;background:linear-gradient(135deg,rgba(14,124,134,.12),rgba(35,162,169,.10));
+    z-index:-1}
+  .nav svg{margin-top:8px}
+  /* switch */
+  .sw{width:46px;height:28px;border-radius:16px;background:var(--indigo);position:relative;flex:none}
+  .sw::after{content:"";position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;
+    background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.18)}
+  .sw.off{background:#DEDBD2}
+  .sw.off::after{right:auto;left:3px}
+  /* button */
+  .btn{height:54px;border-radius:27px;display:flex;align-items:center;justify-content:center;gap:8px;
+    color:#fff;font-size:16px;font-weight:600;
+    background:linear-gradient(135deg,#0E7C86,#23A2A9);
+    box-shadow:0 12px 26px rgba(14,124,134,.32)}
+  .btn.ghost{background:rgba(14,124,134,.10);color:var(--indigo);box-shadow:none;height:46px;font-size:14.5px}
+  /* ---------- screen 1 ---------- */
+  .idcard{border-radius:26px;padding:16px 14px 16px 18px;margin-top:16px;
+    background:linear-gradient(135deg,rgba(14,124,134,.10),rgba(35,162,169,.07));
+    border:1px solid rgba(14,124,134,.14)}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--success);flex:none;
+    box-shadow:0 0 0 4px rgba(52,199,89,.14)}
+  .sechead{display:flex;align-items:center;justify-content:space-between;margin:24px 4px 10px}
+  .sechead b{font-size:16px;font-weight:600}
+  .dev{padding:12px 14px;margin-bottom:10px}
+  /* ---------- screen 2 ---------- */
+  .file-row{display:flex;align-items:center;gap:12px;padding:10px 0}
+  .ftile{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex:none}
+  .targets{display:flex;gap:10px;margin-top:4px}
+  .target{width:112px;padding:12px 0;border-radius:20px;background:#fff;border:1px solid var(--line);
+    display:flex;flex-direction:column;align-items:center;gap:8px}
+  .target.on{border:1.6px solid rgba(14,124,134,.55);background:rgba(14,124,134,.07)}
+  .target .t-av{width:34px;height:34px;border-radius:10px}
+  .target span{font-size:12px;font-weight:500;color:var(--sub);max-width:88px;text-align:center}
+  .target.on span{color:var(--indigo);font-weight:600}
+  /* ---------- screen 3 ---------- */
+  .ring{width:210px;height:210px;margin:26px auto 0;position:relative}
+  .ring .pct{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:2px}
+  .ring .pct b{font-size:28px;font-weight:700;letter-spacing:-.6px;font-variant-numeric:tabular-nums}
+  .stats{display:flex;margin:24px 0 26px}
+  .stats>div{flex:1;text-align:center;position:relative}
+  .stats b{display:block;font-size:16px;font-weight:600}
+  .stats span{font-size:12px;color:var(--sub)}
+  .stats .div{position:absolute;right:0;top:6px;bottom:6px;width:1px;background:var(--line)}
+  .bar{height:4px;border-radius:4px;background:var(--alt);overflow:hidden;margin-top:7px}
+  .bar i{display:block;height:100%;border-radius:4px;background:var(--indigo)}
+  /* ---------- screen 4 ---------- */
+  .group{margin-top:16px}
+  .group>h4{font-size:12px;color:var(--sub);font-weight:600;letter-spacing:.6px;margin:0 6px 10px}
+  .grow-card{background:#fff;border:1px solid var(--line);border-radius:24px;overflow:hidden}
+  .srow{display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--line)}
+  .srow:last-child{border-bottom:none}
+  .srow .ico{color:var(--sub);flex:none}
+  .srow .t{font-size:14.5px}
+  .srow .d{font-size:12px;color:var(--sub);margin-top:3px}
+  .srow .v{font-size:12px;color:var(--sub);max-width:150px}
+  .seg{display:flex;background:var(--alt);border-radius:14px;padding:4px;margin:12px 16px 16px}
+  .seg div{flex:1;text-align:center;font-size:13px;padding:9px 0;border-radius:11px;color:var(--sub);font-weight:500}
+  .seg .on{background:#fff;color:var(--indigo);font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+  /* ---------- tables ---------- */
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
+  .panel{background:#fff;border:1px solid var(--line);border-radius:22px;padding:22px}
+  .panel h3{margin:0 0 14px;font-size:15px}
+  .kv{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px dashed var(--line);font-size:13.5px}
+  .kv:last-child{border-bottom:none}
+  .kv span{color:var(--sub)}
+  .swatches{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px}
+  .swatch{width:76px}
+  .swatch i{display:block;height:52px;border-radius:14px;margin-bottom:6px}
+  .swatch b{font-size:11.5px;font-weight:600;display:block}
+  .swatch span{font-size:11px;color:var(--sub)}
+  footer{margin-top:70px;padding-top:22px;border-top:1px solid var(--line);color:var(--sub);font-size:12.5px}
+  @media (max-width:520px){
+    .wrap{padding:32px 16px 60px}
+    .phone{width:100%;max-width:390px;height:auto;aspect-ratio:390/844}
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1B8F98"/><stop offset="55%" stop-color="#0E7C86"/><stop offset="100%" stop-color="#2FAEB3"/>
+    </linearGradient>
+    <symbol id="i-radar" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M12 6.5a5.5 5.5 0 0 1 5.5 5.5"/><path d="M12 2.8A9.2 9.2 0 0 1 21.2 12"/></g></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M12 5l-6 6M12 5l6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.6V12l3 1.8"/></g></symbol>
+    <symbol id="i-tune" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 8h9M17 8h3M4 16h3M11 16h9"/><circle cx="15" cy="8" r="2.2"/><circle cx="9" cy="16" r="2.2"/></g></symbol>
+    <symbol id="i-laptop" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="4" y="5.5" width="16" height="10.5" rx="2"/><path d="M2.5 19h19"/></g></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="6.5" y="2.6" width="11" height="18.8" rx="3"/><path d="M10.6 18.4h2.8"/></g></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9.5 5.5l6.5 6.5-6.5 6.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5.5v13M5.5 12h13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5.5 12.5l4.2 4.2L18.5 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M6.5 9.5L12 15l5.5-5.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="14" rx="3"/><circle cx="9" cy="10.5" r="1.6"/><path d="M4.5 17l4.6-4.2 3.4 3 2.6-2.3 4.4 3.9"/></g></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M6 3.5h7l5 5v12H6z"/><path d="M13 3.5v5h5"/></g></symbol>
+    <symbol id="i-movie" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="3.5" y="5.5" width="17" height="13" rx="2.6"/><path d="M10.5 9.6l4.2 2.4-4.2 2.4z" fill="currentColor" stroke="none"/></g></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="9.5" rx="2.6"/><path d="M8.4 10.5V8a3.6 3.6 0 0 1 7.2 0v2.5"/></g></symbol>
+    <symbol id="i-finger" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 4.5c3.6 0 6.5 2.9 6.5 6.5v3"/><path d="M8 20c-.8-1.6-1.2-3.2-1.2-5v-4A5.2 5.2 0 0 1 12 5.8"/><path d="M12 8.6a2.9 2.9 0 0 1 2.9 2.9v3.3c0 1.6.3 3 .9 4.3"/><path d="M9.6 19.6c-.5-1.4-.8-2.8-.8-4.2V11"/></g></symbol>
+    <symbol id="i-badge" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="14" rx="3"/><circle cx="9" cy="11" r="1.9"/><path d="M5.8 16.4c.7-1.4 1.8-2.1 3.2-2.1s2.5.7 3.2 2.1M14.4 10.4h4M14.4 13.6h3"/></g></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M2.8 12S6.2 6.2 12 6.2 21.2 12 21.2 12 17.8 17.8 12 17.8 2.8 12 2.8 12z"/><circle cx="12" cy="12" r="2.6"/></g></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="4" y="3.5" width="16" height="17" rx="3"/><circle cx="8.4" cy="8.4" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="8.4" r="1.1" fill="currentColor" stroke="none"/><circle cx="15.6" cy="8.4" r="1.1" fill="currentColor" stroke="none"/><path d="M8 14.5h8"/></g></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 7.5a2 2 0 0 1 2-2h3.4l1.8 2.2h7.8a2 2 0 0 1 2 2v8.8a2 2 0 0 1-2 2H5.5a2 2 0 0 1-2-2z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+    <symbol id="i-contrast" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8.4"/><path d="M12 3.6v16.8a8.4 8.4 0 0 0 0-16.8z" fill="currentColor" stroke="none"/></g></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="8.4"/><path d="M12 11v5.4"/><circle cx="12" cy="8" r="1" fill="currentColor" stroke="none"/></g></symbol>
+    <symbol id="i-hub" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="2.4"/><circle cx="5" cy="6" r="1.8"/><circle cx="19" cy="6" r="1.8"/><circle cx="5" cy="18" r="1.8"/><circle cx="19" cy="18" r="1.8"/><path d="M6.4 7.3l3.6 3M17.6 7.3l-3.6 3M6.4 16.7l3.6-3M17.6 16.7l-3.6-3"/></g></symbol>
+    <symbol id="i-wifi" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M5 12.4a9.6 9.6 0 0 1 14 0"/><path d="M8 15.6a5.6 5.6 0 0 1 8 0"/><circle cx="12" cy="18.6" r="1.3" fill="currentColor" stroke="none"/></g></symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+
+  <!-- ================= HERO ================= -->
+  <div class="hero">
+    <div class="mark">
+      <svg viewBox="0 0 1024 1024" width="100%" height="100%">
+        <rect width="1024" height="1024" fill="url(#brand)"/>
+        <g transform="translate(-120,0) scale(1.0243)" fill="#fff">
+          <circle cx="500" cy="500" r="118"/>
+          <path d="M611.7 328.1A205 205 0 0 1 611.7 671.9" fill="none" stroke="#fff" stroke-width="66" stroke-linecap="round"/>
+          <path d="M676.5 228.3A324 324 0 0 1 676.5 771.7" fill="none" stroke="#fff" stroke-width="56" stroke-linecap="round"/>
+        </g>
+      </svg>
+    </div>
+    <div>
+      <h1>Wisp</h1>
+      <p>只在近处发生的传递 · 局域网直连，不经过任何服务器</p>
+    </div>
+  </div>
+  <div class="meta">
+    <span class="tag">Flutter 3.24+</span>
+    <span class="tag">LocalSend Protocol v2.2</span>
+    <span class="tag">Windows / macOS / Linux / Android / iOS</span>
+    <span class="tag">MIT</span>
+  </div>
+
+  <!-- ================= ICON ================= -->
+  <section>
+    <div class="sec-title"><h2>应用图标</h2><span>App icon</span></div>
+    <p class="sec-desc">
+      一个白点 + 两道向右散开的弧：声音/信号从一台设备轻声传到隔壁。
+      靛蓝到天蓝的斜向渐变给足体积感，纯白图形保证在 16px 下依然可辨。
+      方形满版、无内建圆角，交由系统裁切。
+    </p>
+    <div class="iconboard">
+      <div class="icon-col">
+        <div class="icon-lg">
+          <svg viewBox="0 0 1024 1024" width="100%" height="100%">
+            <rect width="1024" height="1024" fill="url(#brand)"/>
+            <g transform="translate(-120,0) scale(1.0243)" fill="#fff">
+              <circle cx="500" cy="500" r="118"/>
+              <path d="M611.7 328.1A205 205 0 0 1 611.7 671.9" fill="none" stroke="#fff" stroke-width="66" stroke-linecap="round"/>
+              <path d="M676.5 228.3A324 324 0 0 1 676.5 771.7" fill="none" stroke="#fff" stroke-width="56" stroke-linecap="round"/>
+            </g>
+          </svg>
+        </div>
+        <div class="icon-note">1024 × 1024</div>
+      </div>
+      <div class="icon-col"><div class="icon-md">
+        <svg viewBox="0 0 1024 1024" width="100%" height="100%">
+          <rect width="1024" height="1024" fill="url(#brand)"/>
+          <g transform="translate(-120,0) scale(1.0243)" fill="#fff"><circle cx="500" cy="500" r="118"/>
+          <path d="M611.7 328.1A205 205 0 0 1 611.7 671.9" fill="none" stroke="#fff" stroke-width="66" stroke-linecap="round"/>
+          <path d="M676.5 228.3A324 324 0 0 1 676.5 771.7" fill="none" stroke="#fff" stroke-width="56" stroke-linecap="round"/></g>
+        </svg></div><div class="icon-note">88</div></div>
+      <div class="icon-col"><div class="icon-sm">
+        <svg viewBox="0 0 1024 1024" width="100%" height="100%">
+          <rect width="1024" height="1024" fill="url(#brand)"/>
+          <g transform="translate(-120,0) scale(1.0243)" fill="#fff"><circle cx="500" cy="500" r="118"/>
+          <path d="M611.7 328.1A205 205 0 0 1 611.7 671.9" fill="none" stroke="#fff" stroke-width="66" stroke-linecap="round"/>
+          <path d="M676.5 228.3A324 324 0 0 1 676.5 771.7" fill="none" stroke="#fff" stroke-width="56" stroke-linecap="round"/></g>
+        </svg></div><div class="icon-note">44</div></div>
+      <div class="icon-col"><div class="icon-xs">
+        <svg viewBox="0 0 1024 1024" width="100%" height="100%">
+          <rect width="1024" height="1024" fill="url(#brand)"/>
+          <g transform="translate(-120,0) scale(1.0243)" fill="#fff"><circle cx="500" cy="500" r="118"/>
+          <path d="M611.7 328.1A205 205 0 0 1 611.7 671.9" fill="none" stroke="#fff" stroke-width="66" stroke-linecap="round"/>
+          <path d="M676.5 228.3A324 324 0 0 1 676.5 771.7" fill="none" stroke="#fff" stroke-width="56" stroke-linecap="round"/></g>
+        </svg></div><div class="icon-note">28</div></div>
+      <div class="icon-col"><div class="icon-sm" style="background:#F0EEE7;display:flex;align-items:center;justify-content:center">
+        <svg viewBox="120 0 790 1024" height="100%">
+          <g fill="#0E7C86"><circle cx="500" cy="500" r="118"/>
+          <path d="M611.7 328.1A205 205 0 0 1 611.7 671.9" fill="none" stroke="#0E7C86" stroke-width="66" stroke-linecap="round"/>
+          <path d="M676.5 228.3A324 324 0 0 1 676.5 771.7" fill="none" stroke="#0E7C86" stroke-width="56" stroke-linecap="round"/></g>
+        </svg></div><div class="icon-note">单色</div></div>
+    </div>
+  </section>
+
+  <!-- ================= SCREENS ================= -->
+  <section>
+    <div class="sec-title"><h2>四个主界面</h2><span>Screens</span></div>
+    <p class="sec-desc">
+      信息按"我是谁 → 附近有谁 → 发什么 → 传得怎么样"的顺序铺开，
+      每个页面只有一个主要动作，其余全部退到次级层级。
+    </p>
+
+    <div class="phones">
+
+      <!-- ---------- 1 附近 ---------- -->
+      <div>
+        <div class="phone"><div class="screen">
+          <div class="statusbar"><span>9:41</span><span style="display:flex;gap:5px;align-items:center">
+            <svg width="15" height="15" viewBox="0 0 24 24" color="#17191A"><use href="#i-wifi"/></svg>
+            <span style="width:20px;height:10px;border:1.4px solid #17191A;border-radius:3px;display:inline-block;position:relative"><i style="position:absolute;inset:1.4px;right:5px;background:#17191A;border-radius:1px"></i></span>
+          </span></div>
+          <div class="body">
+            <div class="h1">附近</div>
+            <div class="sub">发现 2 台设备</div>
+
+            <div class="idcard">
+              <div class="row">
+                <div class="dot"></div>
+                <div class="grow" style="margin-left:10px">
+                  <div class="name ellip">Tyler 的 MacBook</div>
+                  <div class="meta-line">局域网内可见 · 192.168.1.24</div>
+                </div>
+                <div class="sw"></div>
+              </div>
+              <div class="row" style="margin-top:12px">
+                <span class="chip chip-green"><svg width="12" height="12"><use href="#i-lock"/></svg>加密传输</span>
+                <span class="chip chip-indigo"><svg width="12" height="12"><use href="#i-finger"/></svg>A1B2C3D4</span>
+                <div class="grow"></div>
+                <span style="font-size:12px;color:var(--sub)">v1.0</span>
+              </div>
+            </div>
+
+            <div class="sechead"><b>可用设备</b><span style="font-size:12px;color:var(--sub)">扫描中</span></div>
+
+            <div class="card dev row">
+              <div class="avatar av-a"><svg width="22" height="22"><use href="#i-phone"/></svg></div>
+              <div class="grow">
+                <div class="name ellip">Tyler 的 iPhone</div>
+                <div class="meta-line ellip">iPhone · 192.168.1.31</div>
+              </div>
+              <span class="chip chip-indigo">发送</span>
+            </div>
+
+            <div class="card dev row">
+              <div class="avatar av-b"><svg width="22" height="22"><use href="#i-laptop"/></svg></div>
+              <div class="grow">
+                <div class="name ellip">书房 iMac</div>
+                <div class="meta-line ellip">macOS · 192.168.1.12</div>
+              </div>
+              <span class="chip chip-indigo">发送</span>
+            </div>
+            <div style="text-align:center;font-size:12px;color:var(--sub);margin-top:22px;line-height:1.7">
+              下拉可重新扫描<br>右上角可手动输入 IP
+            </div>
+          </div>
+          <div class="nav">
+            <div class="item on"><svg width="22" height="22"><use href="#i-radar"/></svg>附近</div>
+            <div class="item"><svg width="22" height="22"><use href="#i-up"/></svg>发送</div>
+            <div class="item"><svg width="22" height="22"><use href="#i-history"/></svg>记录</div>
+            <div class="item"><svg width="22" height="22"><use href="#i-tune"/></svg>设置</div>
+          </div>
+        </div></div>
+        <div class="caption"><b>附近</b><p>先确认"我是谁"，再看"有谁在"</p></div>
+      </div>
+
+      <!-- ---------- 2 发送 ---------- -->
+      <div>
+        <div class="phone"><div class="screen">
+          <div class="statusbar"><span>9:41</span><span style="font-size:12px;color:var(--sub)">Wi-Fi</span></div>
+          <div class="body">
+            <div class="h1">发送</div>
+            <div class="sub">3 个文件 · 24.6 MB</div>
+
+            <div class="card" style="margin-top:18px;padding:6px 14px">
+              <div class="file-row">
+                <div class="ftile" style="background:rgba(52,199,89,.12);color:#34C759"><svg width="19" height="19"><use href="#i-image"/></svg></div>
+                <div class="grow"><div class="ellip" style="font-size:15px">海边日落.jpg</div>
+                  <div class="meta-line">4.2 MB</div></div>
+                <svg width="18" height="18" class="chev"><use href="#i-close"/></svg>
+              </div>
+              <div style="height:1px;background:var(--line)"></div>
+              <div class="file-row">
+                <div class="ftile" style="background:rgba(255,59,48,.10);color:#FF3B30"><svg width="19" height="19"><use href="#i-doc"/></svg></div>
+                <div class="grow"><div class="ellip" style="font-size:15px">产品方案 v3.pdf</div>
+                  <div class="meta-line">18.4 MB</div></div>
+                <svg width="18" height="18" class="chev"><use href="#i-close"/></svg>
+              </div>
+              <div style="height:1px;background:var(--line)"></div>
+              <div class="file-row">
+                <div class="ftile" style="background:rgba(255,107,138,.14);color:#FF6B8A"><svg width="19" height="19"><use href="#i-movie"/></svg></div>
+                <div class="grow"><div class="ellip" style="font-size:15px">演示录屏.mp4</div>
+                  <div class="meta-line">2.0 MB</div></div>
+                <svg width="18" height="18" class="chev"><use href="#i-close"/></svg>
+              </div>
+              <div style="height:1px;background:var(--line)"></div>
+              <div class="row" style="padding:14px 0;justify-content:center;gap:6px;color:var(--indigo);font-size:14px;font-weight:600">
+                <svg width="17" height="17"><use href="#i-plus"/></svg>继续添加
+                <div class="grow"></div>
+                <span style="font-size:13px;color:var(--sub);font-weight:500">清空</span>
+              </div>
+            </div>
+
+            <div class="sechead"><b>发送到</b><span style="font-size:12px;color:var(--sub)">2 台在线</span></div>
+            <div class="targets">
+              <div class="target on">
+                <div class="avatar av-a t-av"><svg width="17" height="17"><use href="#i-phone"/></svg></div>
+                <span class="ellip">Tyler 的 iPhone</span>
+              </div>
+              <div class="target">
+                <div class="avatar av-b t-av"><svg width="17" height="17"><use href="#i-laptop"/></svg></div>
+                <span class="ellip">书房 iMac</span>
+              </div>
+            </div>
+
+            <div style="margin-top:26px" class="btn"><svg width="19" height="19"><use href="#i-up"/></svg>发送到 Tyler 的 iPhone</div>
+          </div>
+          <div class="nav">
+            <div class="item"><svg width="22" height="22"><use href="#i-radar"/></svg>附近</div>
+            <div class="item on"><svg width="22" height="22"><use href="#i-up"/></svg>发送</div>
+            <div class="item"><svg width="22" height="22"><use href="#i-history"/></svg>记录</div>
+            <div class="item"><svg width="22" height="22"><use href="#i-tune"/></svg>设置</div>
+          </div>
+        </div></div>
+        <div class="caption"><b>发送</b><p>左"发什么"，右"发给谁"，底部只有一个动作</p></div>
+      </div>
+
+      <!-- ---------- 3 传输 ---------- -->
+      <div>
+        <div class="phone"><div class="screen">
+          <div class="statusbar"><span>9:41</span><span style="font-size:12px;color:var(--sub)">Wi-Fi</span></div>
+          <div class="body">
+            <div class="row" style="height:44px;justify-content:space-between">
+              <svg width="26" height="26" class="chev" style="color:var(--text)"><use href="#i-down"/></svg>
+              <span style="font-size:16px;font-weight:600;color:var(--sub)">传输中</span>
+              <span style="width:26px"></span>
+            </div>
+
+            <div style="text-align:center;margin-top:6px">
+              <div class="avatar av-a" style="width:54px;height:54px;border-radius:16px;margin:0 auto">
+                <svg width="26" height="26"><use href="#i-phone"/></svg></div>
+              <div style="font-size:22px;font-weight:700;letter-spacing:-.3px;margin-top:10px">Tyler 的 iPhone</div>
+              <div class="meta-line" style="margin-top:4px">正在发送到 192.168.1.31</div>
+            </div>
+
+            <div class="ring">
+              <svg viewBox="0 0 210 210" width="210" height="210">
+                <defs><linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#0E7C86"/><stop offset="60%" stop-color="#23A2A9"/><stop offset="100%" stop-color="#2FBF9A"/>
+                </linearGradient></defs>
+                <circle cx="105" cy="105" r="99" fill="none" stroke="#EDEBE4" stroke-width="13"/>
+                <circle cx="105" cy="105" r="99" fill="none" stroke="url(#ringGrad)" stroke-width="13"
+                        stroke-linecap="round" stroke-dasharray="622" stroke-dashoffset="236"
+                        transform="rotate(-90 105 105)"/>
+              </svg>
+              <div class="pct">
+                <svg width="26" height="26" style="color:var(--indigo)"><use href="#i-up"/></svg>
+                <b>62%</b>
+                <span class="meta-line">18.4 MB/s</span>
+              </div>
+            </div>
+
+            <div class="stats">
+              <div><b>15.2 MB / 24.6 MB</b><span>已传输</span><div class="div"></div></div>
+              <div><b>不到 1 秒</b><span>剩余时间</span></div>
+            </div>
+
+            <div class="card" style="padding:8px 16px">
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 0">
+                <div class="ftile" style="background:rgba(52,199,89,.12);color:#34C759"><svg width="18" height="18"><use href="#i-image"/></svg></div>
+                <div class="grow"><div class="ellip" style="font-size:15px">海边日落.jpg</div>
+                  <div class="bar"><i style="width:100%"></i></div></div>
+                <span class="meta-line">4.2 MB</span>
+              </div>
+              <div style="height:1px;background:var(--line)"></div>
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 0">
+                <div class="ftile" style="background:rgba(255,59,48,.10);color:#FF3B30"><svg width="18" height="18"><use href="#i-doc"/></svg></div>
+                <div class="grow"><div class="ellip" style="font-size:15px">产品方案 v3.pdf</div>
+                  <div class="bar"><i style="width:54%"></i></div></div>
+                <span class="meta-line">18.4 MB</span>
+              </div>
+            </div>
+
+            <div class="btn ghost" style="margin-top:22px"><svg width="18" height="18"><use href="#i-close"/></svg>取消传输</div>
+          </div>
+        </div></div>
+        <div class="caption"><b>传输中</b><p>全屏路由，进度、速率、单文件状态一屏读完</p></div>
+      </div>
+
+      <!-- ---------- 4 设置 ---------- -->
+      <div>
+        <div class="phone"><div class="screen">
+          <div class="statusbar"><span>9:41</span><span style="font-size:12px;color:var(--sub)">Wi-Fi</span></div>
+          <div class="body">
+            <div class="h1">设置</div>
+            <div class="sub">接收服务已就绪 · 端口 53317</div>
+
+            <div class="group">
+              <h4>本机</h4>
+              <div class="grow-card">
+                <div class="srow">
+                  <svg width="18" height="18" class="ico"><use href="#i-badge"/></svg>
+                  <div class="grow t">设备名称</div>
+                  <div class="v ellip">Tyler 的 MacBook</div>
+                  <svg width="16" height="16" class="chev"><use href="#i-chev"/></svg>
+                </div>
+                <div class="srow">
+                  <svg width="18" height="18" class="ico"><use href="#i-eye"/></svg>
+                  <div class="grow"><div class="t">在局域网中可见</div>
+                    <div class="d">关闭后别人看不到这台设备</div></div>
+                  <div class="sw"></div>
+                </div>
+                <div class="srow">
+                  <svg width="18" height="18" class="ico"><use href="#i-pin"/></svg>
+                  <div class="grow"><div class="t">PIN 保护</div>
+                    <div class="d">任何人可直接发给你</div></div>
+                  <div class="sw off"></div>
+                </div>
+                <div class="srow">
+                  <svg width="18" height="18" class="ico"><use href="#i-lock"/></svg>
+                  <div class="grow"><div class="t">加密传输</div>
+                    <div class="d">TLS 已启用</div></div>
+                  <div class="sw"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="group">
+              <h4>外观</h4>
+              <div class="grow-card">
+                <div class="srow" style="border-bottom:none;padding-bottom:2px">
+                  <svg width="18" height="18" class="ico"><use href="#i-contrast"/></svg>
+                  <div class="grow t">主题</div>
+                </div>
+                <div class="seg">
+                  <div class="on">跟随系统</div><div>浅色</div><div>深色</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="group">
+              <h4>关于</h4>
+              <div class="grow-card">
+                <div class="srow">
+                  <svg width="18" height="18" class="ico"><use href="#i-info"/></svg>
+                  <div class="grow t">版本</div><div class="v">1.0.0</div>
+                </div>
+                <div class="srow">
+                  <svg width="18" height="18" class="ico"><use href="#i-hub"/></svg>
+                  <div class="grow t">协议</div><div class="v">LocalSend v2.2</div>
+                </div>
+                <div class="srow">
+                  <svg width="18" height="18" class="ico"><use href="#i-finger"/></svg>
+                  <div class="grow t">本机指纹</div><div class="v">A1B2C3D4…9F2E</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="nav">
+            <div class="item"><svg width="22" height="22"><use href="#i-radar"/></svg>附近</div>
+            <div class="item"><svg width="22" height="22"><use href="#i-up"/></svg>发送</div>
+            <div class="item"><svg width="22" height="22"><use href="#i-history"/></svg>记录</div>
+            <div class="item on"><svg width="22" height="22"><use href="#i-tune"/></svg>设置</div>
+          </div>
+        </div></div>
+        <div class="caption"><b>设置</b><p>每项都写清"改了会发生什么"</p></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ================= DESIGN NOTES ================= -->
+  <section>
+    <div class="sec-title"><h2>设计规范</h2><span>System</span></div>
+    <p class="sec-desc">色彩、圆角、动效全部集中在设计令牌里，改一处全局生效，不散落在页面中。</p>
+    <div class="grid2">
+      <div class="panel">
+        <h3>色板</h3>
+        <div class="swatches">
+          <div class="swatch"><i style="background:linear-gradient(135deg,#1B8F98,#2FAEB3)"></i><b>Brand</b><span>#0E7C86 → #23A2A9</span></div>
+          <div class="swatch"><i style="background:#0E7C86"></i><b>Indigo</b><span>#0E7C86</span></div>
+          <div class="swatch"><i style="background:#23A2A9"></i><b>Azure</b><span>#23A2A9</span></div>
+          <div class="swatch"><i style="background:#34C759"></i><b>Success</b><span>#34C759</span></div>
+          <div class="swatch"><i style="background:#FF9F0A"></i><b>Warning</b><span>#FF9F0A</span></div>
+          <div class="swatch"><i style="background:#17191A"></i><b>Ink</b><span>#17191A</span></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>动效令牌</h3>
+        <div class="kv"><span>页面切换</span><b>340ms · easeOutCubic</b></div>
+        <div class="kv"><span>列表入场</span><b>每项 +45ms，最多 8 项</b></div>
+        <div class="kv"><span>底栏指示块</span><b>260ms · 同步触感</b></div>
+        <div class="kv"><span>进度环</span><b>420ms · 数字随弧线</b></div>
+        <div class="kv"><span>按钮按下</span><b>180ms · scale 0.975</b></div>
+      </div>
+      <div class="panel">
+        <h3>操作路径</h3>
+        <div class="kv"><span>发文件</span><b>附近 → 点设备 → 选文件 → 发送</b></div>
+        <div class="kv"><span>或</span><b>发送页 → 选文件 → 点设备 → 发送</b></div>
+        <div class="kv"><span>接收</span><b>底部弹层确认 → 自动落盘</b></div>
+        <div class="kv"><span>找不到设备</span><b>下拉重扫 / 手动输入 IP</b></div>
+      </div>
+      <div class="panel">
+        <h3>网络行为</h3>
+        <div class="kv"><span>发现</span><b>UDP 组播 224.0.0.167:53317</b></div>
+        <div class="kv"><span>兜底</span><b>网段逐个 /register（24 并发）</b></div>
+        <div class="kv"><span>传输</span><b>POST /upload，两路并发</b></div>
+        <div class="kv"><span>加密</span><b>TLS（有证书时），否则明文并显式标注</b></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Wisp · 界面预览为静态还原，实际交互以 Flutter 工程为准（<code>wisp/lib</code>）。
+    协议实现参考 LocalSend（MIT）。
+  </footer>
+</div>
+</body>
+</html>

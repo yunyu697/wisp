@@ -1,0 +1,54 @@
+name: wisp
+description: "Wisp — 只在近处发生的文件传递。局域网点对点互传，不经过任何服务器。"
+publish_to: "none"
+version: 1.0.14+14
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  provider: ^6.1.2
+  shared_preferences: ^2.3.3
+  path_provider: ^2.1.5
+  file_picker: 8.3.7
+  crypto: ^3.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icon/
+    - assets/certs/
+
+flutter_launcher_icons:
+  image_path: "assets/icon/wisp_icon_1024.png"
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  # 图标是"浅暖白底 + 青绿卡片 + 珊瑚圆点"，自适应图标背景必须取同一个底色，
+  # 否则 Android 上青绿卡片会浮在一块旧版蓝底上。
+  adaptive_icon_background: "#FDFCF9"
+  adaptive_icon_foreground: "assets/icon/wisp_icon_foreground.png"
+  windows:
+    generate: true
+    image_path: "assets/icon/wisp_icon_1024.png"
+  macos:
+    generate: true
+    image_path: "assets/icon/wisp_icon_1024.png"
+  web:
+    generate: true
+    image_path: "assets/icon/wisp_icon_1024.png"
+
+dependency_overrides:
+  # path_provider_foundation / shared_preferences_foundation 的新版本
+  # 都拖进 objective_c，其 native assets hook 在 Windows 路径含空格时
+  # 直接崩（dart sdk bug），统一固定到仍用 ffi 的旧版绕开。
+  path_provider_foundation: 2.4.1
+  shared_preferences_foundation: 2.3.5

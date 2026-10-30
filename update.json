@@ -1,0 +1,5 @@
+{
+  "version": "1.0.14",
+  "notes": "设置 → 关于新增「自动检查更新」：每次启动 / 每天 / 每周 / 关闭可选，到点后台静默比对，发现新版本才提醒。",
+  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v1.0.14/wisp-windows-x64-1.0.14.zip"
+}

@@ -1,0 +1,24 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+build/
+dist/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+.idea/
+.vscode/
+
+# 平台产物
+android/.gradle/
+ios/Pods/
+macos/Pods/
+**/*.xcworkspace/xcuserdata/
+
+# 证书私钥不入库
+assets/certs/key.pem
+assets/certs/cert.pem
+
+# 系统
+.DS_Store
+Thumbs.db
