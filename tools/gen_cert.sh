@@ -3,6 +3,11 @@
 # 用法：bash tools/gen_cert.sh
 set -euo pipefail
 
+# Windows 的 Git Bash 会把 "/CN=..." 这类参数当路径转换成盘符路径，
+# 关掉转换才能让 openssl 的 -subj 原样到达（其它平台无此变量，无害）。
+export MSYS_NO_PATHCONV=1
+export MSYS2_ARG_CONV_EXCL="*"
+
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/assets/certs"
 mkdir -p "$DIR"
 

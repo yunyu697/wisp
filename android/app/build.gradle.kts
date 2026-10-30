@@ -6,7 +6,8 @@ plugins {
 
 android {
     namespace = "app.wisp.wisp"
-    compileSdk = flutter.compileSdkVersion
+    // flutter_plugin_android_lifecycle 要求 compileSdk >= 36，固定高于 Flutter 默认值。
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
