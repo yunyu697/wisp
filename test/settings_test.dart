@@ -125,7 +125,9 @@ void main() {
       expect(state.hiddenByUsername, 2);
     });
 
-    test('不设置用户名时，所有设备都可见', () async {
+    test('不设置用户名时，只显示同样没设的设备', () async {
+      // 规则是"同名才互相可见"：空对空算同名，空对非空算不同。
+      // 否则设了用户名的人就藏不住了——没设的人照样能看见他。
       final AppState state = AppState();
       state.settings = const WispSettings(alias: '我', fingerprint: 'me');
 
@@ -133,8 +135,25 @@ void main() {
       state.acceptDeviceForTest(deviceWith('lisi'));
       state.acceptDeviceForTest(deviceWith(''));
 
-      expect(state.devices.length, 3);
-      expect(state.hiddenByUsername, 0);
+      expect(state.devices.length, 1);
+      expect(state.devices.first.username, isEmpty);
+      expect(state.hiddenByUsername, 2);
+    });
+
+    test('大小写与首尾空格不影响匹配', () async {
+      final AppState state = AppState();
+      state.settings = const WispSettings(
+        alias: '我',
+        fingerprint: 'me',
+        username: 'ZhangSan',
+      );
+
+      state.acceptDeviceForTest(deviceWith(' zhangsan '));
+      state.acceptDeviceForTest(deviceWith('ZHANGSAN'));
+      state.acceptDeviceForTest(deviceWith('lisi'));
+
+      expect(state.devices.length, 2);
+      expect(state.hiddenByUsername, 1);
     });
 
     test('自己不会被当成设备', () async {

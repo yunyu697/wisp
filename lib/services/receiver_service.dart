@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../core/constants.dart';
+import '../core/username_scope.dart';
 import '../core/file_names.dart';
 import '../models/device.dart';
 import '../models/transfer.dart';
@@ -173,11 +174,21 @@ class ReceiverService {
   Future<void> _handleRegister(HttpRequest request) async {
     final String body = await utf8.decoder.bind(request).join();
     final Map<String, dynamic>? payload = _decode(body);
+    final String remoteIp = request.connectionInfo?.remoteAddress.address ?? '';
+
+    // 用户名不同就装作这里没有服务：连"我们是谁"都不回。
+    // 只做界面过滤远远不够——对方扫一遍网段，凭 200 响应就知道我们在。
+    final String theirs = (payload?['username'] as String?) ?? '';
+    if (!sameUsernameScope(settings.username, theirs)) {
+      onLog('拒绝 $remoteIp 的发现请求：用户名不一致'
+          '（本机「${_scopeLabel()}」，对方「${theirs.trim().isEmpty ? '未设置' : theirs.trim()}」）');
+      await _json(request, 403, <String, dynamic>{'message': 'username mismatch'});
+      return;
+    }
 
     // 对方主动来握手 —— 这就是官方 LocalSend 的发现回应方式。
     // 之前这里只打日志就丢掉了，导致双方互相看不见。
     if (payload != null) {
-      final String remoteIp = request.connectionInfo?.remoteAddress.address ?? '';
       // register 响应里通常不带 port，用 TCP 源端口补上（对方服务监听的那个端口）。
       final int remotePort = (payload['port'] as num?)?.toInt() ??
           request.connectionInfo?.remotePort ??
@@ -188,6 +199,9 @@ class ReceiverService {
     }
     await _json(request, 200, _selfInfo());
   }
+
+  /// 日志里怎么称呼本机的用户名范围。
+  String _scopeLabel() => settings.hasUsername ? settings.username.trim() : '未设置';
 
   Future<void> _handlePrepare(HttpRequest request) async {
     final String body = await utf8.decoder.bind(request).join();
@@ -221,6 +235,15 @@ class ReceiverService {
     if (certOk == false) {
       onLog('拒绝 $remoteIp 的请求：证书与它声明的指纹不一致');
       await _json(request, 403, <String, dynamic>{'message': 'certificate mismatch'});
+      return;
+    }
+
+    // 用户名不同直接拒绝。发现阶段两边已经互相看不见了，这里再挡一道，
+    // 防止有人拿着旧记录（或从组播报文里看到的地址）绕过发现直接推文件。
+    if (!sameUsernameScope(settings.username, sender.username)) {
+      onLog('拒绝 $remoteIp 的传输请求：用户名不一致'
+          '（本机「${_scopeLabel()}」，对方「${sender.username.trim().isEmpty ? '未设置' : sender.username.trim()}」）');
+      await _json(request, 403, <String, dynamic>{'message': 'username mismatch'});
       return;
     }
 

@@ -99,8 +99,8 @@ class SettingsPage extends StatelessWidget {
                     title: '识别用户名',
                     value: state.settings.hasUsername ? state.settings.username : '不限制',
                     subtitle: state.settings.hasUsername
-                        ? '只显示同名用户的设备（官方客户端没有这个字段，会被过滤掉）'
-                        : '留空则显示局域网里的所有设备',
+                        ? '只与同名用户互相可见；对方也要填同一个名字'
+                        : '留空则不启用，只与同样留空的设备互相可见',
                     onTap: () => _editUsername(context, state),
                   ),
                   _SettingRow(
@@ -500,7 +500,7 @@ class SettingsPage extends StatelessWidget {
     if (value != null && value.trim().isNotEmpty) await state.setAlias(value);
   }
 
-  /// 编辑识别用户名。留空表示不限制，能看到局域网里所有设备。
+  /// 编辑识别用户名。留空表示不启用这个限制。
   Future<void> _editUsername(BuildContext context, AppState state) async {
     final TextEditingController controller =
         TextEditingController(text: state.settings.username);
@@ -515,7 +515,8 @@ class SettingsPage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             const Text(
-              '填了之后，只显示局域网里用户名相同的设备。留空则显示所有设备。',
+              '填了之后，只与用户名相同的设备互相可见：你看不到别人，别人也看不到你。'
+              '留空表示不启用这个限制，此时只能看到同样留空的设备。',
               style: TextStyle(fontSize: 13, height: 1.5),
             ),
             const SizedBox(height: 14),

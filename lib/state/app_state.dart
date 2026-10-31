@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../core/constants.dart';
+import '../core/username_scope.dart';
 import '../core/utils/format.dart';
 import '../core/utils/pickers.dart';
 import '../models/device.dart';
@@ -236,8 +237,10 @@ class AppState extends ChangeNotifier {
   void _upsertDevice(WispDevice device) {
     if (device.fingerprint == settings.fingerprint) return;
 
-    if (settings.hasUsername && device.username.trim() != settings.username.trim()) {
-      // 用户名对不上：这类设备不该出现在列表里。
+    // 用户名范围：同名才互相可见（空对空算同名，空对非空算不同）。
+    // 发现与接收两端已经按这条规则拦过了，这里再兜一次——别处（手动连接、
+    // 测试、以后新增的入口）漏进来的设备不能靠"没人拦"就显示出来。
+    if (!sameUsernameScope(settings.username, device.username)) {
       _filteredKeys.add(device.key);
       notifyListeners();
       return;
@@ -1113,7 +1116,12 @@ class AppState extends ChangeNotifier {
           _log('$target 出示的证书与它声明的指纹不一致，已忽略');
           continue;
         }
-        _upsertDevice(WispDevice.fromJson(payload, ip: target));
+        final WispDevice peer = WispDevice.fromJson(payload, ip: target);
+        if (!sameUsernameScope(settings.username, peer.username)) {
+          // 手动连接不静默丢弃：用户是特意敲了 IP 的，得说清为什么连不上。
+          return '${peer.alias} 属于其他用户（用户名不一致），已拒绝连接';
+        }
+        _upsertDevice(peer);
         return null;
       } catch (_) {
         continue;

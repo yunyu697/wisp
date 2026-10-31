@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../core/constants.dart';
+import '../core/username_scope.dart';
 import '../models/device.dart';
 import '../models/network.dart';
 import 'settings_service.dart';
@@ -252,6 +253,9 @@ class DiscoveryService {
 
     final WispDevice device = WispDevice.fromJson(payload, ip: ip);
     if (device.fingerprint == settings.fingerprint) return;
+    // 用户名不同就当没听见：既不记进列表，也**不**回 register。
+    // 回了等于把自己的信息主动交出去——对方本来只能靠扫描才知道我们在。
+    if (!_inScope(device)) return;
 
     _lastPeerAt = DateTime.now();
     _remember(device);
@@ -396,6 +400,7 @@ class DiscoveryService {
           }
           final WispDevice device = WispDevice.fromJson(payload, ip: ip);
           if (device.fingerprint == settings.fingerprint) return;
+          if (!_inScope(device)) return;
           _remember(device);
           return;
         } catch (_) {
@@ -418,6 +423,10 @@ class DiscoveryService {
     );
     return ok ?? true;
   }
+
+  /// 这台设备是否与本机在同一个用户名范围内（规则见 core/username_scope.dart）。
+  bool _inScope(WispDevice device) =>
+      sameUsernameScope(settings.username, device.username);
 
   /// 同一台设备只告警一次，避免每轮扫描刷一条同样的横幅。
   void _reportMismatch(String ip) {
@@ -479,7 +488,8 @@ class DiscoveryService {
         _reportMismatch(ip);
         return null;
       }
-      return WispDevice.fromJson(payload, ip: ip);
+      final WispDevice device = WispDevice.fromJson(payload, ip: ip);
+      return _inScope(device) ? device : null;
     } catch (_) {
       return null;
     } finally {

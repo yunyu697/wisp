@@ -156,7 +156,11 @@ class NearbyPage extends StatelessWidget {
                       Padding(
                         padding: const EdgeInsets.only(bottom: 12),
                         child: Text(
-                          '已隐藏 ${state.hiddenByUsername} 台其他用户的设备',
+                          // 没设用户名时，被隐藏的是"别人设了名字、我没有"的设备，
+                          // 说成"其他用户的设备"会让人以为对方是陌生人。
+                          state.settings.hasUsername
+                              ? '已隐藏 ${state.hiddenByUsername} 台其他用户的设备'
+                              : '已隐藏 ${state.hiddenByUsername} 台设置了用户名的设备',
                           textAlign: TextAlign.center,
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
