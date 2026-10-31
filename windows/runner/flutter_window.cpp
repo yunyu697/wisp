@@ -58,6 +58,26 @@ constexpr int kCardWidth = 340;
 constexpr int kCardHeight = 132;
 constexpr int kCardMargin = 16;  // 阴影边距
 
+// 卡片模式（与 Dart 侧 DesktopService.bubbleAsk/Progress/Done/Canceled 对齐）：
+// 0=询问 1=进度 2=完成 3=取消/中断提示（无按钮，看完自动收）。
+// 询问给 30s：用户要决定收不收，8s 太仓促，是"通知闪一下就没了"的另一半来源。
+// 取消提示只给 3s：明确告知结局即可，停留太久反而像没关掉。
+constexpr int kCardModeAsk = 0;
+constexpr int kCardModeProgress = 1;
+constexpr int kCardModeDone = 2;
+constexpr int kCardModeCanceled = 3;
+
+UINT_PTR ToastLifetimeMs(int mode) {
+  switch (mode) {
+    case kCardModeAsk:
+      return 30000;
+    case kCardModeCanceled:
+      return 3000;
+    default:
+      return 8000;  // 进度 / 完成
+  }
+}
+
 // Timer ids。主窗口 2（托盘闪烁），球窗口 3/6/7/8，气泡 5，通知 9/10。
 constexpr UINT_PTR kFlashTimerId = 2;
 constexpr UINT_PTR kBallAnimTimerId = 3;
@@ -752,7 +772,11 @@ LRESULT CALLBACK BubbleWndProc(HWND hwnd, UINT message, WPARAM wparam,
         KillTimer(hwnd, kBubbleTimeoutTimerId);
         if (g_instance != nullptr) {
           g_instance->HideBubble();
-          g_instance->InvokeDart("onBubbleTimeout", flutter::EncodableMap{});
+          // 取消提示的超时只是"看完自动收"，不算询问超时——
+          // 不能触发 onBubbleTimeout，否则 Dart 会误以为询问被晾过。
+          if (g_instance->bubble_mode_ != kCardModeCanceled) {
+            g_instance->InvokeDart("onBubbleTimeout", flutter::EncodableMap{});
+          }
         }
         return 0;
       }
@@ -1406,9 +1430,14 @@ void FlutterWindow::RenderBall(float expand_t, BYTE alpha, float scale) {
 void FlutterWindow::ShowToast(const std::wstring& title,
                               const std::wstring& body, int mode,
                               const std::wstring& progress) {
+  WispDbgLog("ShowToast mode=" + std::to_string(mode) + " hwnd_alive=" +
+             std::to_string(toast_window_ != nullptr));
   if (toast_window_ == nullptr) {
     CreateToastWindow();
-    if (toast_window_ == nullptr) return;
+    if (toast_window_ == nullptr) {
+      WispDbgLog("ShowToast: CreateToastWindow failed");
+      return;
+    }
   }
   toast_title_ = title;
   toast_body_ = body;
@@ -1430,13 +1459,21 @@ void FlutterWindow::ShowToast(const std::wstring& title,
                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 
   ShowWindow(toast_window_, SW_SHOWNOACTIVATE);
-  RenderToast(1);
+  WispDbgLog("ShowToast: shown visible=" +
+             std::to_string(IsWindowVisible(toast_window_) ? 1 : 0));
+  // 存活时间按模式区分：询问 30s（用户要想一想）；进度 8s（每次更新顺延）；
+  // 完成 8s；取消提示 3s（看完即走）。
   KillTimer(toast_window_, kToastTimeoutTimerId);
-  toast_timeout_timer_ =
-      SetTimer(toast_window_, kToastTimeoutTimerId, 8000, nullptr);
+  toast_timeout_timer_ = SetTimer(toast_window_, kToastTimeoutTimerId,
+                                  ToastLifetimeMs(mode), nullptr);
   // 滑入动画（仅在全新弹出时播放）。
+  //
+  // 注意时序：这里必须先画在屏幕外（slide_t=0），让动画自己滑进来。
+  // 以前先画终态再从 0 开始播动画——用户会看到"完整卡片闪一下 → 消失 →
+  // 再滑进来"，正是"通知闪一下就没了"观感的来源之一。
   KillTimer(toast_window_, kToastAnimTimerId);
   toast_anim_phase_ = 0;
+  RenderToast(0);
   toast_anim_timer_ = SetTimer(toast_window_, kToastAnimTimerId, 16, nullptr);
 }
 
@@ -1449,12 +1486,13 @@ void FlutterWindow::UpdateToast(const std::wstring& body, int mode,
   RenderToast(1);
   // 有内容更新就顺延存活时间（进度每 200ms 一次，卡片保持到传输结束）。
   KillTimer(toast_window_, kToastTimeoutTimerId);
-  toast_timeout_timer_ =
-      SetTimer(toast_window_, kToastTimeoutTimerId, 8000, nullptr);
+  toast_timeout_timer_ = SetTimer(toast_window_, kToastTimeoutTimerId,
+                                  ToastLifetimeMs(mode), nullptr);
 }
 
 void FlutterWindow::HideToast() {
   if (toast_window_ == nullptr) return;
+  WispDbgLog("HideToast mode=" + std::to_string(toast_mode_));
   KillTimer(toast_window_, kToastTimeoutTimerId);
   toast_timeout_timer_ = 0;
   KillTimer(toast_window_, kToastAnimTimerId);
@@ -1533,7 +1571,13 @@ ToastButtons DrawCardContent(Gdiplus::Graphics& g, HWND hwnd, int win_w,
   ToastButtons buttons{};
   buttons.card = RECT{0, 0, win_w, win_h};
 
-  if (mode == 1) {
+  if (mode == kCardModeCanceled) {
+    // 取消/中断提示：只有标题和正文，不放按钮也不放进度条——
+    // 这张卡 3 秒后自动收起，不需要任何交互。
+    return buttons;
+  }
+
+  if (mode == kCardModeProgress) {
     // 进度模式：进度条 + 百分比（不画按钮，避免误点）。
     Gdiplus::RectF bar(text_x, button_y + ScaleFor(hwnd, 8), text_w,
                        ScaleFor(hwnd, 8));
@@ -1558,7 +1602,7 @@ ToastButtons DrawCardContent(Gdiplus::Graphics& g, HWND hwnd, int win_w,
     return buttons;
   }
 
-  const bool done = mode == 2;
+  const bool done = mode == kCardModeDone;
   RECT primary{text_x + half + gap, button_y, text_x + half + gap + half,
                button_y + button_h};
   RECT secondary{text_x, button_y, text_x + half, button_y + button_h};
@@ -1597,12 +1641,15 @@ void FlutterWindow::RenderToast(float slide_t) {
 }
 
 void FlutterWindow::HandleToastClick(POINT pt) {
-  if (toast_mode_ == 1) return;  // 进度模式不可点。
+  // 进度卡不可点；取消提示 3 秒自动收，也不可点。
+  if (toast_mode_ == kCardModeProgress || toast_mode_ == kCardModeCanceled) {
+    return;
+  }
   const char* action = nullptr;
   if (PtInRect(&g_toast_buttons.primary, pt)) {
-    action = toast_mode_ == 2 ? "openFolder" : "accept";
+    action = toast_mode_ == kCardModeDone ? "openFolder" : "accept";
   } else if (PtInRect(&g_toast_buttons.secondary, pt)) {
-    if (toast_mode_ == 2) {
+    if (toast_mode_ == kCardModeDone) {
       HideToast();  // 完成卡的"关闭"只收卡片，不回传。
       return;
     }
@@ -1771,8 +1818,8 @@ void FlutterWindow::ShowBubble(const std::wstring& title,
   RenderBubble();
 
   KillTimer(bubble_window_, kBubbleTimeoutTimerId);
-  bubble_timeout_timer_ =
-      SetTimer(bubble_window_, kBubbleTimeoutTimerId, 60000, nullptr);
+  bubble_timeout_timer_ = SetTimer(bubble_window_, kBubbleTimeoutTimerId,
+                                   ToastLifetimeMs(bubble_mode_), nullptr);
 }
 
 void FlutterWindow::UpdateBubble(const std::wstring& body, int mode,
@@ -1811,9 +1858,10 @@ void FlutterWindow::RenderBubble() {
 
 void FlutterWindow::HandleBubbleClick(POINT pt) {
   const char* action = nullptr;
-  if (bubble_mode_ != 1) {
+  // 进度卡与取消提示都不可点（提示 3 秒自动收）。
+  if (bubble_mode_ != kCardModeProgress && bubble_mode_ != kCardModeCanceled) {
     if (PtInRect(&g_bubble_buttons.primary, pt)) {
-      action = bubble_mode_ == 2 ? "openFolder" : "accept";
+      action = bubble_mode_ == kCardModeDone ? "openFolder" : "accept";
     } else if (PtInRect(&g_bubble_buttons.secondary, pt)) {
       action = "dismiss";
     }
@@ -1917,6 +1965,7 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   if (message == WM_ACTIVATE && LOWORD(wparam) != WA_INACTIVE) {
     if ((toast_window_ != nullptr && IsWindowVisible(toast_window_)) ||
         (bubble_window_ != nullptr && IsWindowVisible(bubble_window_))) {
+      WispDbgLog("WM_ACTIVATE: desktop surfaces retreat");
       SetTrayFlashing(false);
       HideToast();
       HideBubble();

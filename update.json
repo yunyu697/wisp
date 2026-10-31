@@ -1,5 +1,5 @@
 {
-  "version": "1.0.15",
-  "notes": "修复 Android 无法占用端口（补齐权限声明）；Android 组播发现接入 MulticastLock；放大应用图标图形占比。",
-  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v1.0.15/wisp-windows-x64-1.0.15-setup.exe"
+  "version": "1.0.16",
+  "notes": "修复桌面通知闪一下就没了；发送方取消时卡片显示提示并在 3 秒后自动收起；去掉悬浮球内侧多余高光环。",
+  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v1.0.16/wisp-windows-x64-1.0.16-setup.exe"
 }

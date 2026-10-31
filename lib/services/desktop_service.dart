@@ -286,10 +286,14 @@ class DesktopService {
     }
   }
 
-  /// 气泡消息的三种模式，与 C++ 层的 bubble_mode_ 一一对应。
+  /// 气泡/卡片消息的四种模式，与 C++ 层的 kCardMode* 一一对应。
   static const int bubbleAsk = 0;
   static const int bubbleProgress = 1;
   static const int bubbleDone = 2;
+
+  /// 取消/中断提示：卡片只显示标题和正文，没有按钮与进度条，
+  /// 原生层 3 秒后自动收起（ToastLifetimeMs）。
+  static const int bubbleCanceled = 3;
 
   /// 在悬浮球旁边弹出气泡。mode：0 询问接收 / 1 传输进度 / 2 传输完成。
   static Future<void> showBubble(

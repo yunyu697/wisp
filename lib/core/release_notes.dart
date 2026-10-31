@@ -9,10 +9,16 @@ class WispReleaseNotes {
   const WispReleaseNotes._();
 
   /// 当前应用版本（与 pubspec.yaml 的 `version:` 保持一致）。
-  static const String currentVersion = '1.0.15';
+  static const String currentVersion = '1.0.16';
 
   /// 新版本在前，设置页按这个顺序展示。
   static const List<WispReleaseEntry> entries = <WispReleaseEntry>[
+    WispReleaseEntry(version: '1.0.16', changes: <String>[
+      '修复桌面通知「闪一下就没了」：卡片改为先滑入再展示，询问态存活延到 30 秒',
+      '发送方取消或连接中断时，通知卡片原地显示提示，3 秒后自动收起并回归原状态',
+      '去掉悬浮球内侧多余的高光环，只保留一圈柔和外投影',
+      '主窗口重新激活时自动退场桌面卡片与气泡，不再遮挡窗口',
+    ]),
     WispReleaseEntry(version: '1.0.15', changes: <String>[
       '修复 Android 启动报「无法占用端口：Operation not permitted」：补齐 INTERNET 等权限声明',
       'Android 组播发现接入 MulticastLock，能稳定收到局域网 announce',

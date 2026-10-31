@@ -81,11 +81,13 @@ class AppState extends ChangeNotifier {
 
   // 桌面通知状态机：
   // _bubbleShown/_bubbleAccepted —— 悬浮球气泡流程是否活着、用户是否已确认。
+  // _toastShown —— 右下角通知卡片流程是否活着（询问/进度都在这张卡上）。
   // _progressSurfaceShown —— 确认后进度面板（气泡或卡片）是否已创建。
   // _desktopSuppressed —— 用户打开了主窗口：桌面提醒全部退场并停止推进。
   // _useBallForFlow —— 本次流程走悬浮球气泡（true）还是通知卡片（false）。
   bool _bubbleShown = false;
   bool _bubbleAccepted = false;
+  bool _toastShown = false;
   bool _progressSurfaceShown = false;
   bool _desktopSuppressed = false;
   bool _useBallForFlow = false;
@@ -161,6 +163,7 @@ class AppState extends ChangeNotifier {
         incoming = request;
         _bubbleShown = false;
         _bubbleAccepted = false;
+        _toastShown = false;
         _progressSurfaceShown = false;
         _desktopSuppressed = false;
         unawaited(_notifyDesktopIncoming(request));
@@ -748,6 +751,7 @@ class AppState extends ChangeNotifier {
       _bubbleAccepted = false;
       unawaited(DesktopService.hideBubble());
     }
+    _toastShown = false;
     // 拒绝即流程结束：吸附的球缩回把手。
     unawaited(DesktopService.collapseBall());
     notifyListeners();
@@ -777,6 +781,7 @@ class AppState extends ChangeNotifier {
       await DesktopService.showBallAlert();
       _showIncomingBubble(request);
     } else {
+      _toastShown = true;
       unawaited(DesktopService.showToast('收到传输请求', body,
           mode: DesktopService.bubbleAsk));
     }
@@ -839,30 +844,44 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// 接收流程结束：面板切"完成"态询问打开目录；悬浮球缩回把手。
+  /// 接收流程结束：完成态切"打开目录"，取消/中断态显示提示
+  /// （原生层 3 秒后自动收起）；悬浮球缩回把手。
   void _notifyDesktopFinished(TransferSession session) {
-    if (!_bubbleAccepted || session.direction != TransferDirection.incoming) return;
+    if (session.direction != TransferDirection.incoming) return;
+    // 本次流程有没有在桌面上露过面：气泡确认过 / 卡片在展 / 询问气泡在展。
+    // 什么都没露过（比如用户全程看着主窗口）就不必打扰。
+    final bool surfaceActive = _bubbleAccepted || _toastShown || _bubbleShown;
+    final bool flowOnBall = _useBallForFlow;
     _bubbleShown = false;
     _bubbleAccepted = false;
-    if (_desktopSuppressed) return; // 用户已回到主窗口，别再打扰。
-    if (session.status != TransferStatus.completed) {
-      unawaited(_useBallForFlow
-          ? DesktopService.hideBubble()
-          : DesktopService.hideToast());
+    _toastShown = false;
+    _progressSurfaceShown = false;
+    if (_desktopSuppressed || !surfaceActive) {
       unawaited(DesktopService.collapseBall());
       return;
     }
-    unawaited(_useBallForFlow
-        ? DesktopService.showBubble(
-            '接收完成',
-            '${session.files.length} 个文件已保存，是否打开保存目录？',
-            mode: DesktopService.bubbleDone,
-          )
-        : DesktopService.showToast(
-            '接收完成',
-            '${session.files.length} 个文件已保存，是否打开保存目录？',
-            mode: DesktopService.bubbleDone,
-          ));
+    if (session.status == TransferStatus.completed) {
+      unawaited(flowOnBall
+          ? DesktopService.showBubble(
+              '接收完成',
+              '${session.files.length} 个文件已保存，是否打开保存目录？',
+              mode: DesktopService.bubbleDone,
+            )
+          : DesktopService.showToast(
+              '接收完成',
+              '${session.files.length} 个文件已保存，是否打开保存目录？',
+              mode: DesktopService.bubbleDone,
+            ));
+    } else {
+      // 发送方取消（/cancel）或连接中断：在原卡片上显示提示，
+      // 原生层按 mode=canceled 的存活时间（3 秒）自动收起，回到原状态。
+      final String hint = session.status == TransferStatus.canceled
+          ? '${session.peerAlias} 取消了发送'
+          : '与 ${session.peerAlias} 的连接中断，传输未完成';
+      unawaited(flowOnBall
+          ? DesktopService.updateBubble(hint, mode: DesktopService.bubbleCanceled)
+          : DesktopService.updateToast(hint, mode: DesktopService.bubbleCanceled));
+    }
     unawaited(DesktopService.collapseBall());
   }
 
@@ -897,6 +916,7 @@ class AppState extends ChangeNotifier {
         _desktopSuppressed = true;
         _bubbleShown = false;
         _bubbleAccepted = false;
+        _toastShown = false;
       case 'onBubbleAction':
         final String action = args['action']?.toString() ?? '';
         if (action == 'accept' && incoming != null) {
@@ -919,6 +939,7 @@ class AppState extends ChangeNotifier {
         _desktopSuppressed = true;
         _bubbleShown = false;
         _bubbleAccepted = false;
+        _toastShown = false;
         break;
       case 'onBubbleTimeout':
         // 询问态超时算用户没表态：球缩回把手，流程结束。

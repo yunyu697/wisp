@@ -238,28 +238,36 @@ def make_preview(icon: Image.Image, size: int = 1024) -> Image.Image:
 
 
 def make_ball(size: int = 640) -> Image.Image:
-    """悬浮球：圆形浅底 + 同一套 glyph，带外投影。"""
+    """悬浮球：纯白圆盘 + 一圈柔和投影 + 同一套 glyph。
+
+    视觉上只允许有**一圈**轮廓感（外投影）。旧版在圆盘内叠了一块
+    高光椭圆，它的模糊边缘在浅底上形成第二圈灰环，被反馈
+    "悬浮球有两个边框"——已去掉，中心提亮改用无硬边的径向渐变。
+    """
     canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     pad = int(size * 0.10)
     d = size - pad * 2
 
+    # 外投影：往下偏一点、更大更柔、更淡，读作"悬浮的影子"而不是描边。
     shadow = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     ImageDraw.Draw(shadow).ellipse(
-        [pad, pad + int(size * 0.02), pad + d, pad + d + int(size * 0.02)],
-        fill=(18, 60, 90, 90))
-    shadow = shadow.filter(ImageFilter.GaussianBlur(size * 0.028))
+        [pad, pad + int(size * 0.035), pad + d, pad + d + int(size * 0.035)],
+        fill=(18, 60, 90, 52))
+    shadow = shadow.filter(ImageFilter.GaussianBlur(size * 0.040))
     canvas = Image.alpha_composite(canvas, shadow)
 
+    # 圆盘：纯白。中心不做分块高光，改用整面径向渐变（边缘 alpha 归零，
+    # 不产生任何可见的分界线）。
     disc = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     ImageDraw.Draw(disc).ellipse([pad, pad, pad + d, pad + d],
-                                 fill=BG_TOP + (255,))
-    # 圆盘内一点点径向渐变（用缩小的浅色圆叠出来，避免 numpy）。
-    inner = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    ImageDraw.Draw(inner).ellipse(
-        [pad + d * 0.10, pad + d * 0.06, pad + d * 0.90, pad + d * 0.86],
-        fill=(255, 255, 255, 110))
-    inner = inner.filter(ImageFilter.GaussianBlur(size * 0.02))
-    disc = Image.alpha_composite(disc, inner)
+                                 fill=(255, 255, 255, 255))
+    grad = Image.radial_gradient("L").resize((d, d), Image.LANCZOS)
+    # 径向渐变：中心 0 → 边缘 255。反转并压低强度（最多 26/255 的白），
+    # 让中心比边缘亮一点点，但没有可察觉的"环"。
+    lift_mask = grad.point(lambda v: int((255 - v) * 26 / 255 * 1.4))
+    lift = Image.new("RGBA", (d, d), (255, 255, 255, 0))
+    lift.putalpha(lift_mask)
+    disc.alpha_composite(lift, (pad, pad))
     canvas = Image.alpha_composite(canvas, disc)
 
     glyph_size = int(d * 0.72)
