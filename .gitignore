@@ -23,3 +23,6 @@ assets/certs/cert.pem
 .DS_Store
 Thumbs.db
 *.log
+
+# golden 失败诊断产物（对比图/蒙版/主图），本地生成，不入库
+test/failures/

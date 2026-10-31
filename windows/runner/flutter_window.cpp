@@ -1829,6 +1829,14 @@ void FlutterWindow::UpdateBubble(const std::wstring& body, int mode,
   bubble_mode_ = mode;
   bubble_progress_ = progress;
   RenderBubble();
+  // 每次更新都顺延存活时间，跟 UpdateToast 对齐：
+  //  - 进度态每 200ms 刷一次，计时器被不断续期，气泡不会中途自己消失；
+  //  - 切到取消提示时按 3s 重新计时，看完自动收起。
+  // 以前这里不重置计时器，气泡沿用上一个模式的剩余时间：
+  //  进度跑到 8s 就凭空消失，取消提示也不会按 3s 收。
+  KillTimer(bubble_window_, kBubbleTimeoutTimerId);
+  bubble_timeout_timer_ = SetTimer(bubble_window_, kBubbleTimeoutTimerId,
+                                   ToastLifetimeMs(mode), nullptr);
 }
 
 void FlutterWindow::HideBubble() {
