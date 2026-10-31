@@ -90,14 +90,14 @@ void main() {
     expect(leftAfter, greaterThan(leftBefore), reason: '切到「记录」后高亮块应该往右滑');
   });
 
-  testWidgets('golden: 底栏（浅色）', (WidgetTester tester) async {
+  testWidgets('golden: 底栏（浅色）', tags: 'golden', (WidgetTester tester) async {
     usePhone(tester);
     await tester.pumpWidget(host(0));
     await tester.pump(const Duration(milliseconds: 900));
     await expectLater(find.byType(WispBottomNav), matchesGoldenFile('goldens/06-bottom-nav.png'));
   });
 
-  testWidgets('golden: 底栏（深色）', (WidgetTester tester) async {
+  testWidgets('golden: 底栏（深色）', tags: 'golden', (WidgetTester tester) async {
     usePhone(tester);
     await tester.pumpWidget(host(0, mode: ThemeMode.dark));
     await tester.pump(const Duration(milliseconds: 900));

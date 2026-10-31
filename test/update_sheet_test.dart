@@ -70,7 +70,7 @@ void main() {
       expect(find.textContaining('已是最新'), findsNothing);
     });
 
-    testWidgets('golden: 发现新版本', (WidgetTester tester) async {
+    testWidgets('golden: 发现新版本', tags: 'golden', (WidgetTester tester) async {
       // 固定版本号：跟着 currentVersion 走的话，每发一版这张基准图都要重画。
       await pump(
         tester,

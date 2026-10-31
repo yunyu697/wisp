@@ -111,7 +111,7 @@ void main() {
       expect(find.text('当前版本'), findsNothing);
     });
 
-    testWidgets('golden: 更新日志弹层', (WidgetTester tester) async {
+    testWidgets('golden: 更新日志弹层', tags: 'golden', (WidgetTester tester) async {
       tester.view.physicalSize = const Size(840, 1120);
       tester.view.devicePixelRatio = 2.0;
       addTearDown(tester.view.reset);
