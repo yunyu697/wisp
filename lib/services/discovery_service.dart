@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
+
+import 'package:flutter/services.dart';
 
 import '../core/constants.dart';
 import '../models/device.dart';
@@ -63,6 +64,18 @@ class DiscoveryService {
     _selfIp = await resolveLocalIp(settings.networkInterface);
     if (_selfIp == null) {
       onError('没有找到可用的局域网地址，请检查网络连接');
+    }
+
+    // Android 为省电默认在内核层丢组播包，必须持有 MulticastLock 才能收到
+    // announce。锁由 MainActivity 通过方法通道持有，进程结束自动释放。
+    if (Platform.isAndroid) {
+      try {
+        await _androidChannel
+            .invokeMethod<bool>('acquireMulticastLock')
+            .timeout(const Duration(seconds: 3));
+      } catch (_) {
+        // 通道不可用（如宿主侧未实现）不打断发现流程，扫描模式仍可用。
+      }
     }
 
     if (settings.discoveryMode.multicastEnabled) {
@@ -140,14 +153,17 @@ class DiscoveryService {
     }
   }
 
+  /// Android 侧方法通道（组播锁），仅 Android 上会真正用到。
+  static const MethodChannel _androidChannel = MethodChannel('wisp/android');
+
   /// 把组播出口网卡钉到 [ip] 所在的那块网卡。
   ///
   /// `IP_MULTICAST_IF` 的平台常量并不统一：Windows / macOS / iOS 是 9，
-  /// Linux 是 32；值就是 4 字节的 in_addr（网络字节序）。
+  /// Linux 与 Android（同为 Linux 内核）是 32；值就是 4 字节的 in_addr（网络字节序）。
   /// 任何一步不被支持就安静退回系统默认路由——那总比把发送整个搞坏强。
   void _pinMulticastInterface(RawDatagramSocket socket, String ip) {
     const int ipProtoIp = 0;
-    final int multicastIf = Platform.isLinux ? 32 : 9;
+    final int multicastIf = (Platform.isLinux || Platform.isAndroid) ? 32 : 9;
     try {
       socket.setRawOption(RawSocketOption(
         ipProtoIp,
@@ -480,5 +496,12 @@ class DiscoveryService {
     _scanTimer?.cancel();
     _socket?.close();
     _socket = null;
+    if (Platform.isAndroid) {
+      try {
+        await _androidChannel.invokeMethod<void>('releaseMulticastLock');
+      } catch (_) {
+        // 进程退出时锁会被系统回收，这里失败无须处理。
+      }
+    }
   }
 }

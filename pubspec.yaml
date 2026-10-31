@@ -1,7 +1,7 @@
 name: wisp
 description: "Wisp — 只在近处发生的文件传递。局域网点对点互传，不经过任何服务器。"
 publish_to: "none"
-version: 1.0.14+14
+version: 1.0.15+15
 
 environment:
   sdk: ">=3.5.0 <4.0.0"
@@ -35,7 +35,11 @@ flutter_launcher_icons:
   # 图标是"浅暖白底 + 青绿卡片 + 珊瑚圆点"，自适应图标背景必须取同一个底色，
   # 否则 Android 上青绿卡片会浮在一块旧版蓝底上。
   adaptive_icon_background: "#FDFCF9"
-  adaptive_icon_foreground: "assets/icon/wisp_icon_foreground.png"
+  # 前景用预排版主图：图形已占画布 67%（安全区 66%）。
+  # 之前直接用 wisp_icon_foreground.png（图形只有 39%）再叠默认 16% inset，
+  # 图形最终只占两成多，被反馈"图形部分占图标的比例太小"。
+  adaptive_icon_foreground: "assets/icon/wisp_icon_adaptive_foreground.png"
+  adaptive_icon_foreground_inset: 0
   windows:
     generate: true
     image_path: "assets/icon/wisp_icon_1024.png"

@@ -9,10 +9,15 @@ class WispReleaseNotes {
   const WispReleaseNotes._();
 
   /// 当前应用版本（与 pubspec.yaml 的 `version:` 保持一致）。
-  static const String currentVersion = '1.0.14';
+  static const String currentVersion = '1.0.15';
 
   /// 新版本在前，设置页按这个顺序展示。
   static const List<WispReleaseEntry> entries = <WispReleaseEntry>[
+    WispReleaseEntry(version: '1.0.15', changes: <String>[
+      '修复 Android 启动报「无法占用端口：Operation not permitted」：补齐 INTERNET 等权限声明',
+      'Android 组播发现接入 MulticastLock，能稳定收到局域网 announce',
+      '放大应用图标图形占比，Android 自适应图标不再显示得很小',
+    ]),
     WispReleaseEntry(version: '1.0.14', changes: <String>[
       '设置 → 关于新增「自动检查更新」：每次启动 / 每天 / 每周 / 关闭可选',
       '到点后台静默比对，发现新版本弹一条提示，不自动下载不打扰',

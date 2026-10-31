@@ -89,7 +89,12 @@ void main() {
 
       expect(find.text('更新日志'), findsNWidgets(2)); // 入口行 + 弹层标题
       expect(find.textContaining('当前 v${WispReleaseNotes.currentVersion}'), findsOneWidget);
-      expect(find.text('v1.0.11'), findsOneWidget);
+      // ListView 懒构建，断言首项（最新版本）一定已构建。
+      // 设置页版本行也可能显示同一个号，所以只要求「至少出现一次」。
+      expect(
+        find.text('v${WispReleaseNotes.entries.first.version}'),
+        findsWidgets,
+      );
       expect(find.text('当前版本'), findsOneWidget);
       // ListView 是懒构建的：滚到底才建出最早版本，顺便验证弹层可滚。
       await tester.dragUntilVisible(
