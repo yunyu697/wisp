@@ -123,6 +123,12 @@ class FlutterWindow : public Win32Window {
   void RenderToast(float slide_t);   // slide_t: 0=画外 1=就位
   void HandleToastClick(POINT pt);
 
+  // --- 打开外部链接 ---
+  // 用 ShellExecuteW 把 http(s) 交给系统默认浏览器。
+  // 不能用 `explorer.exe <url>`：从 Flutter 子进程里调它拉不起浏览器，
+  // 用户点了「下载最新版」没反应。返回 ShellExecute 的错误码（>32 表示成功）。
+  int OpenUrl(const std::wstring& url);
+
   // --- floating ball ---
   void SetFloatingBall(bool enabled, int hover_delay_ms);
   void ShowBallAlert();

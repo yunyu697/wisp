@@ -192,9 +192,22 @@ class _UpdateSheetState extends State<UpdateSheet> {
     return <Widget>[
       Padding(
         padding: const EdgeInsets.only(top: 10, bottom: 4),
-        child: Text(
-          '下载最新版',
-          style: Theme.of(context).textTheme.labelLarge,
+        child: Row(
+          children: <Widget>[
+            Text(
+              '下载最新版',
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+            if (info != null) ...<Widget>[
+              const SizedBox(width: 8),
+              // 告诉用户这台机器会拿到什么包——各平台产物格式不同，
+              // 只给一个链接容易被下错。
+              Text(
+                info.platformAssetLabel,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ],
         ),
       ),
       for (final (String, String) entry in entries)
@@ -213,13 +226,22 @@ class _UpdateSheetState extends State<UpdateSheet> {
               size: 16, color: WispColors.secondaryText(context)),
           onTap: () async {
             final bool official = entry.$1.startsWith('官方');
-            await openExternal(entry.$2);
-            if (context.mounted && !official) {
-              ScaffoldMessenger.of(context)
-                ..hideCurrentSnackBar()
-                ..showSnackBar(const SnackBar(
-                  content: Text('已打开加速镜像（第三方服务，仅代理下载地址）'),
-                ));
+            final ExternalOpenResult result = await openExternal(entry.$2);
+            if (!context.mounted) return;
+            final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+            messenger.hideCurrentSnackBar();
+            if (!result.opened) {
+              // 打不开必须说清楚，否则用户只会觉得"这按钮没用"。
+              messenger.showSnackBar(SnackBar(
+                content: Text(result.message ?? '没能打开下载链接'),
+                duration: const Duration(seconds: 6),
+              ));
+              return;
+            }
+            if (!official) {
+              messenger.showSnackBar(const SnackBar(
+                content: Text('已打开加速镜像（第三方服务，仅代理下载地址）'),
+              ));
             }
           },
         ),

@@ -33,11 +33,13 @@ class WispUpdateSource {
 
   /// GitHub 加速镜像（前缀代理形式）。失效就删掉，有新的往里加；
   /// 顺序即「检查更新」时的重试顺序，也决定下载列表的排列顺序。
+  ///
+  /// 2026-10-31 实测：ghfast.top / gh-proxy.com / ghproxy.net 可用（HTTP 200），
+  /// gh.llkk.cc 已失效（连接不通），已移除。
   static const List<String> mirrors = <String>[
     'https://ghfast.top/',
     'https://gh-proxy.com/',
     'https://ghproxy.net/',
-    'https://gh.llkk.cc/',
   ];
 
   /// 镜像的展示名（去掉协议与斜杠，列表里显示用）。
@@ -54,15 +56,28 @@ class WispUpdateInfo {
     required this.latestVersion,
     this.notes,
     this.downloadUrl,
+    this.downloads = const <String, String>{},
   });
 
   factory WispUpdateInfo.fromJson(Map<String, dynamic> json) {
     final String? notes = (json['notes'] as String?)?.trim();
     final String? downloadUrl = (json['downloadUrl'] as String?)?.trim();
+    // 分平台产物表：{"windows": "...exe", "macos": "...dmg", ...}
+    final Map<String, String> downloads = <String, String>{};
+    final Object? rawDownloads = json['downloads'];
+    if (rawDownloads is Map) {
+      rawDownloads.forEach((Object? key, Object? value) {
+        if (key is String && value is String) {
+          final String trimmed = value.trim();
+          if (trimmed.isNotEmpty) downloads[key] = trimmed;
+        }
+      });
+    }
     return WispUpdateInfo(
       latestVersion: (json['version'] as String?) ?? '',
       notes: notes == null || notes.isEmpty ? null : notes,
       downloadUrl: downloadUrl == null || downloadUrl.isEmpty ? null : downloadUrl,
+      downloads: downloads,
     );
   }
 
@@ -74,8 +89,31 @@ class WispUpdateInfo {
   /// 最新版安装包直链（可空，缺省用发布页）。
   final String? downloadUrl;
 
-  /// 下载入口：有直链用直链，没有就退回发布页。
-  String get primaryUrl => downloadUrl ?? WispUpdateSource.releasePageUrl;
+  /// 分平台产物直链：key 为 windows / macos / linux / android。
+  final Map<String, String> downloads;
+
+  /// 当前平台对应的下载直链。没有就退回通用 [downloadUrl]，再退回发布页。
+  String get primaryUrl {
+    final String? platformUrl = downloads[platformKey];
+    if (platformUrl != null && platformUrl.isNotEmpty) return platformUrl;
+    return downloadUrl ?? WispUpdateSource.releasePageUrl;
+  }
+
+  /// 当前平台的产物名，用于界面提示（例：Windows 安装包）。
+  String get platformAssetLabel {
+    switch (platformKey) {
+      case 'windows':
+        return 'Windows 安装包';
+      case 'macos':
+        return 'macOS 镜像';
+      case 'linux':
+        return 'Linux 安装包';
+      case 'android':
+        return 'Android 安装包';
+      default:
+        return '安装包';
+    }
+  }
 
   /// 官方 + 各镜像的下载入口，设置页按这个顺序展示。
   List<(String, String)> get downloadEntries => <(String, String)>[
@@ -83,6 +121,15 @@ class WispUpdateInfo {
         for (final String prefix in WispUpdateSource.mirrors)
           ('加速镜像 · ${WispUpdateSource.mirrorLabel(prefix)}', '$prefix$primaryUrl'),
       ];
+}
+
+/// 当前运行平台的产物键（与 update.json 的 `downloads` 对应）。
+String get platformKey {
+  if (Platform.isWindows) return 'windows';
+  if (Platform.isMacOS) return 'macos';
+  if (Platform.isLinux) return 'linux';
+  if (Platform.isAndroid) return 'android';
+  return 'other';
 }
 
 /// 自动检查更新的频率。落盘值 = 两次检查最少间隔的小时数：

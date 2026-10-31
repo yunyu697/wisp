@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../core/constants.dart';
+import '../core/utils/external.dart';
 import '../models/device.dart';
 import '../models/transfer.dart';
 import '../services/desktop_service.dart';
@@ -32,6 +33,7 @@ class WispCliOptions {
     this.sendFile,
     this.sendPin,
     this.sendHttps = false,
+    this.openUrl,
   });
 
   final bool selfTest;
@@ -41,6 +43,9 @@ class WispCliOptions {
   final String? sendPin;
   final bool sendHttps;
 
+  /// 要验证「点下载链接能不能唤起浏览器」的 URL。
+  final String? openUrl;
+
   /// 解析命令行；没有 Wisp 自己的参数时返回 null（走正常启动路径）。
   static WispCliOptions? parse(List<String> args) {
     bool selfTest = false;
@@ -49,6 +54,7 @@ class WispCliOptions {
     String? file;
     String? pin;
     bool https = false;
+    String? openUrl;
 
     for (final String arg in args) {
       if (arg == '--wisp-selftest') {
@@ -63,10 +69,12 @@ class WispCliOptions {
         pin = arg.substring('--wisp-pin='.length);
       } else if (arg == '--wisp-https') {
         https = true;
+      } else if (arg.startsWith('--wisp-openurl=')) {
+        openUrl = arg.substring('--wisp-openurl='.length);
       }
     }
 
-    if (!selfTest && target == null) return null;
+    if (!selfTest && target == null && openUrl == null) return null;
     return WispCliOptions(
       selfTest: selfTest,
       reportPath: report,
@@ -74,6 +82,7 @@ class WispCliOptions {
       sendFile: file,
       sendPin: pin,
       sendHttps: https,
+      openUrl: openUrl,
     );
   }
 }
@@ -103,12 +112,66 @@ class SelfTestRunner {
     if (options.sendTarget != null) {
       await _step('send_peer', _sendToPeer);
     }
+    if (options.openUrl != null) {
+      await _step('open_url', _openUrl);
+    }
     if (options.selfTest) {
       await _step('send_loopback', _sendLoopback);
       await _step('toast_visible', _toastVisible);
       await _step('bubble_visible', _bubbleVisible);
       await _step('ball_hidden_bubble', _bubbleBesideHandle);
     }
+  }
+
+  /// 验证「点下载链接能唤起浏览器」。
+  ///
+  /// 只看 ShellExecute 的返回值不够——它成功也可能没真的打开浏览器。
+  /// 这里对比前后浏览器**进程实例数**（按 PID 计，不是进程名去重）：
+  /// 浏览器已经开着时，新标签页常常复用同一个进程，只看进程名会漏判。
+  Future<String?> _openUrl() async {
+    final String url = options.openUrl!;
+    final int before = await _browserProcessCount();
+    final ExternalOpenResult result = await openExternal(url);
+    if (!result.opened) {
+      throw StateError('openExternal 失败：${result.message ?? '未知原因'}');
+    }
+    // 给系统一点时间把浏览器拉起来。
+    int after = before;
+    for (int i = 0; i < 30; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      after = await _browserProcessCount();
+      if (after > before) break;
+    }
+    if (after <= before) {
+      throw StateError(
+          'openExternal 报告成功，但浏览器进程数没变（before=$before after=$after）');
+    }
+    return '已唤起浏览器：浏览器进程 $before → $after';
+  }
+
+  /// 当前运行的浏览器进程实例数（按 PID 计）。
+  Future<int> _browserProcessCount() async {
+    final ProcessResult result =
+        await Process.run('tasklist', <String>['/FO', 'CSV', '/NH']);
+    int count = 0;
+    for (final String line in result.stdout.toString().split('\n')) {
+      final String lower = line.toLowerCase();
+      for (final String exe in <String>[
+        'msedge.exe',
+        'chrome.exe',
+        'firefox.exe',
+        'brave.exe',
+        'vivaldi.exe',
+        'opera.exe',
+      ]) {
+        // tasklist 的 CSV 每行是一个进程实例：名称,PID,...
+        if (lower.contains('"$exe"')) {
+          count++;
+          break;
+        }
+      }
+    }
+    return count;
   }
 
   Future<void> _step(

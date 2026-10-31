@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cwctype>
 #include <gdiplus.h>
 #include <optional>
 #include <shellapi.h>
@@ -1027,6 +1028,9 @@ bool FlutterWindow::OnCreate() {
         } else if (name == "hideBubble") {
           HideBubble();
           result->Success();
+        } else if (name == "openUrl") {
+          // 打开下载链接。返回 true/false，Dart 侧据此提示失败原因。
+          result->Success(OpenUrl(GetString("url")) == 0);
         } else {
           result->NotImplemented();
         }
@@ -1421,6 +1425,35 @@ void FlutterWindow::RenderBall(float expand_t, BYTE alpha, float scale) {
   }
 
   canvas.Present(hwnd, nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// 打开外部链接
+// ---------------------------------------------------------------------------
+
+int FlutterWindow::OpenUrl(const std::wstring& url) {
+  if (url.empty()) return -1;
+
+  // 只放行 http/https：ShellExecute 能执行 exe 和打开本地文件，
+  // 让 URL 参数进来就等于开了个任意执行的口子。
+  std::wstring lowered = url;
+  std::transform(lowered.begin(), lowered.end(), lowered.begin(),
+                  [](wchar_t c) { return static_cast<wchar_t>(::towlower(c)); });
+  if (lowered.rfind(L"http://", 0) != 0 && lowered.rfind(L"https://", 0) != 0) {
+    WispDbgLog("OpenUrl rejected non-http scheme");
+    return -1;
+  }
+
+  // ShellExecuteW 是系统官方的「用默认程序打开」入口：它自己会找
+  // http/https 的默认关联程序并把它拉起来。用 explorer.exe 转交是不行的——
+  // 从 Flutter 起的子进程没有正确的交互式桌面关联，explorer.exe 收下 URL
+  // 却不会真的打开浏览器，用户点了「下载最新版」就没反应了。
+  HINSTANCE result = ShellExecuteW(GetHandle(), L"open", url.c_str(), nullptr,
+                                   nullptr, SW_SHOWNORMAL);
+  int code = static_cast<int>(reinterpret_cast<intptr_t>(result));
+  WispDbgLog("OpenUrl ShellExecuteW code=" + std::to_string(code));
+  // ShellExecute 成功返回 > 32；失败返回具体错误码（<= 32）。
+  return code > 32 ? 0 : code;
 }
 
 // ---------------------------------------------------------------------------

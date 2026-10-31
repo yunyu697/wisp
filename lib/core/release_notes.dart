@@ -9,10 +9,16 @@ class WispReleaseNotes {
   const WispReleaseNotes._();
 
   /// 当前应用版本（与 pubspec.yaml 的 `version:` 保持一致）。
-  static const String currentVersion = '1.0.16';
+  static const String currentVersion = '1.0.17';
 
   /// 新版本在前，设置页按这个顺序展示。
   static const List<WispReleaseEntry> entries = <WispReleaseEntry>[
+    WispReleaseEntry(version: '1.0.17', changes: <String>[
+      '修复「发现新版本」后点击下载链接没反应：改用系统 API 唤起默认浏览器',
+      '下载列表按当前平台给出对应产物（Windows 安装包 / macOS 镜像 / Linux 包 / APK）',
+      '打不开链接时明确提示原因，不再默默无响应',
+      '移除已失效的加速镜像 gh.llkk.cc',
+    ]),
     WispReleaseEntry(version: '1.0.16', changes: <String>[
       '修复桌面通知「闪一下就没了」：卡片改为先滑入再展示，询问态存活延到 30 秒',
       '发送方取消或连接中断时，通知卡片原地显示提示，3 秒后自动收起并回归原状态',

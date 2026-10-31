@@ -67,6 +67,58 @@ void main() {
     });
   });
 
+  group('分平台下载产物', () {
+    test('清单里的 downloads 按平台取用', () {
+      final WispUpdateInfo info = WispUpdateInfo.fromJson(<String, dynamic>{
+        'version': '1.0.16',
+        'downloadUrl': 'https://example.com/generic.zip',
+        'downloads': <String, String>{
+          'windows': 'https://example.com/win-setup.exe',
+          'macos': 'https://example.com/mac.dmg',
+          'linux': 'https://example.com/linux.AppImage',
+          'android': 'https://example.com/app.apk',
+        },
+      });
+      expect(info.downloads.length, 4);
+      // 当前平台能取到自己的产物。
+      final String? platformUrl = info.downloads[platformKey];
+      expect(platformUrl, isNotNull, reason: '本平台应有对应产物');
+      expect(info.primaryUrl, platformUrl);
+      expect(info.primaryUrl, isNot('https://example.com/generic.zip'),
+          reason: '有分平台产物时不该退回通用链接');
+    });
+
+    test('没有本平台产物时退回 downloadUrl，再退回发布页', () {
+      const WispUpdateInfo onlyGeneric = WispUpdateInfo(
+        latestVersion: '1.0.16',
+        downloadUrl: 'https://example.com/generic.zip',
+      );
+      expect(onlyGeneric.primaryUrl, 'https://example.com/generic.zip');
+
+      const WispUpdateInfo nothing = WispUpdateInfo(latestVersion: '1.0.16');
+      expect(nothing.primaryUrl, WispUpdateSource.releasePageUrl);
+    });
+
+    test('downloads 里的空串与非法类型被忽略', () {
+      final WispUpdateInfo info = WispUpdateInfo.fromJson(<String, dynamic>{
+        'version': '1.0.16',
+        'downloads': <String, dynamic>{
+          'windows': '   ',
+          'macos': 123,
+          'linux': 'https://example.com/linux.AppImage',
+        },
+      });
+      expect(info.downloads.containsKey('windows'), isFalse);
+      expect(info.downloads.containsKey('macos'), isFalse);
+      expect(info.downloads['linux'], 'https://example.com/linux.AppImage');
+    });
+
+    test('平台产物名可读且非空', () {
+      const WispUpdateInfo info = WispUpdateInfo(latestVersion: '1.0.16');
+      expect(info.platformAssetLabel, isNotEmpty);
+    });
+  });
+
   group('自动检查频率', () {
     test('关闭时永远不到点，其余从没查过就算到点', () {
       const int now = 1000000;
