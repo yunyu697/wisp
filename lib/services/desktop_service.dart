@@ -82,13 +82,22 @@ class DesktopService {
   }
 
   /// 主窗口当前是否可见（可见时收到请求只弹应用内弹层，不打扰桌面）。
+  ///
+  /// **拿不到状态时必须返回 false**，不能返回 true。
+  ///
+  /// 这里的"保守处理"很容易写反：返回 true 等于告诉调用方"用户正看着主
+  /// 窗口"，于是桌面通知被判定为多余而**直接吞掉**——用户看到的就是
+  /// "通知要下一次才出现"。拿不到状态时宁可多弹一次桌面通知，也不要静默。
+  ///
+  /// （通知分流实际走的是 [windowState]，这个方法保留给"只关心可见性"
+  /// 的场景，语义必须与之一致。）
   static Future<bool> isWindowVisible() async {
     try {
       return await _channel.invokeMethod<bool>('isWindowVisible') ?? false;
     } on MissingPluginException {
-      return true; // 无法判断时保守处理，当作用户正在看。
+      return false; // 无法判断时不打扰桌面。
     } on PlatformException {
-      return true;
+      return false;
     }
   }
 
