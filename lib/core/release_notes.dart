@@ -9,10 +9,15 @@ class WispReleaseNotes {
   const WispReleaseNotes._();
 
   /// 当前应用版本（与 pubspec.yaml 的 `version:` 保持一致）。
-  static const String currentVersion = '1.0.20';
+  static const String currentVersion = '1.0.21';
 
   /// 新版本在前，设置页按这个顺序展示。
   static const List<WispReleaseEntry> entries = <WispReleaseEntry>[
+    WispReleaseEntry(version: '1.0.21', changes: <String>[
+      '修复「出示的证书与它声明的指纹不一致，已忽略」反复弹出、设备列表里看不到对方的问题：Wisp 上报的设备标识是 32 位随机串，不是证书哈希，上一版却拿它去比 64 位证书哈希，于是每台真实设备都被判成冒充。现在只有形状确实是证书哈希的声明才参与比对',
+      '同一条证书告警对同一台设备只提示一次，不再每轮扫描刷一条',
+      '修正文档里对指纹校验能力的描述：内置证书随安装包分发、所有安装共用一张，它挡得住随手换证书的中间人，但挡不住有心人，也不构成设备认证',
+    ]),
     WispReleaseEntry(version: '1.0.20', changes: <String>[
       '修复接收端文件名漏洞：对端可以把文件写到下载目录之外（例如开机启动目录），自动接收时用户毫无察觉；现在文件名只保留纯文件名，并强制校验落点必须在本次接收目录内',
       '「加密传输」真正校验对端身份：证书指纹必须与对端声明的一致，对不上直接断开（此前任何证书都放行，同网段可被中间人劫持）',

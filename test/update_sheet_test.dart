@@ -27,7 +27,11 @@ void main() {
         debugShowCheckedModeBanner: false,
         theme: WispTheme.light(fontFamily: fontFamily),
         home: Scaffold(
-          body: UpdateSheet(checkOverride: checkOverride),
+          // 固定「当前版本」，否则每发一版 golden 都要重画（只差几十像素）。
+          body: UpdateSheet(
+            checkOverride: checkOverride,
+            currentVersion: '1.0.0',
+          ),
         ),
       );
     }
@@ -87,10 +91,10 @@ void main() {
     });
 
     testWidgets('已是最新：不出现新版本元素，下载入口仍显示', (WidgetTester tester) async {
+      // 与 host() 注入的 currentVersion 对齐：两者都写死，才不会随发版漂移。
       await pump(
         tester,
-        () async =>
-            const WispUpdateInfo(latestVersion: WispReleaseNotes.currentVersion),
+        () async => const WispUpdateInfo(latestVersion: '1.0.0'),
       );
 
       expect(find.textContaining('已是最新'), findsOneWidget);

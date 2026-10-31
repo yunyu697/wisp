@@ -19,10 +19,19 @@ import '../../services/update_service.dart';
 /// [onChecked] 在一次检查结束后回调（无论成败），
 /// 用于刷新自动检查的时间戳，避免刚手动查完又被自动检查重复请求。
 class UpdateSheet extends StatefulWidget {
-  const UpdateSheet({super.key, this.checkOverride, this.onChecked});
+  const UpdateSheet({
+    super.key,
+    this.checkOverride,
+    this.onChecked,
+    String? currentVersion,
+  }) : currentVersion = currentVersion ?? WispReleaseNotes.currentVersion;
 
   final Future<WispUpdateInfo?> Function()? checkOverride;
   final VoidCallback? onChecked;
+
+  /// 「当前 vX.Y.Z」里显示的版本。生产环境用真实版本；
+  /// 测试传固定值，否则每发一版都要重画 golden（差几十像素，纯噪音）。
+  final String currentVersion;
 
   @override
   State<UpdateSheet> createState() => _UpdateSheetState();
@@ -72,7 +81,7 @@ class _UpdateSheetState extends State<UpdateSheet> {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
               child: Text(
-                '当前 v${WispReleaseNotes.currentVersion}',
+                '当前 v${widget.currentVersion}',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
@@ -87,7 +96,7 @@ class _UpdateSheetState extends State<UpdateSheet> {
                     final WispUpdateInfo? info = snapshot.data;
                     final bool newer = info != null &&
                         WispUpdateService.isNewer(
-                            info.latestVersion, WispReleaseNotes.currentVersion);
+                            info.latestVersion, widget.currentVersion);
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
@@ -146,7 +155,7 @@ class _UpdateSheetState extends State<UpdateSheet> {
     }
 
     final bool newer =
-        WispUpdateService.isNewer(info.latestVersion, WispReleaseNotes.currentVersion);
+        WispUpdateService.isNewer(info.latestVersion, widget.currentVersion);
     if (!newer) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),

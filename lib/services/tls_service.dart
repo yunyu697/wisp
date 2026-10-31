@@ -101,12 +101,25 @@ class WispTls {
 
   /// 证书是否与对端声明的 [claimed] 指纹一致。
   ///
-  /// 返回 null 表示**无法判定**（对端没上报指纹，或走的是明文 HTTP）——
-  /// 调用方自己决定是放行还是拒绝，别把"不知道"当成"通过"。
+  /// 返回 null 表示**无法判定**，调用方自己决定是放行还是拒绝，
+  /// 别把"不知道"当成"通过"。三种情况返回 null：
+  /// 1. 没有证书（走明文 HTTP，或服务端未请求客户端证书）；
+  /// 2. 对端没上报指纹；
+  /// 3. 上报的**不是证书指纹的形状**。
+  ///
+  /// 第 3 条是踩过坑才加的：协议 §2 规定"HTTPS 模式下指纹是证书的 SHA-256，
+  /// HTTP 模式下是随机串"。Wisp 自己一直上报 32 位随机串（历史实现），
+  /// 拿它去比 64 位证书哈希必然不等——1.0.20 因此把每台真实设备都判成
+  /// "证书与声明不符"，设备被踢出列表，横幅每隔几秒刷一条。
+  /// 现在只对 64 位十六进制的声明做比对，其余一律视为"设备 ID，不是证书声明"。
   static bool? certMatchesClaim(X509Certificate? cert, String? claimed) {
     if (cert == null) return null;
     final String expected = normalizeFingerprint(claimed ?? '');
-    if (expected.isEmpty) return null;
+    if (!_isSha256Hex(expected)) return null;
     return compactFingerprint(cert) == expected;
   }
+
+  /// 是否是 64 位十六进制（SHA-256 的紧凑形式）。
+  static bool _isSha256Hex(String value) =>
+      value.length == 64 && RegExp(r'^[0-9a-f]{64}$').hasMatch(value);
 }

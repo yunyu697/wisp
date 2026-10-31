@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../core/constants.dart';
@@ -40,6 +41,13 @@ class DiscoveryService {
   Timer? _pruneTimer;
   Timer? _scanTimer;
   final Map<String, DateTime> _seen = <String, DateTime>{};
+
+  /// 已经就「证书与声明不符」告警过的 IP。
+  ///
+  /// 扫描是每 [WispSettings.scanIntervalSeconds] 秒一轮，同一台设备每轮都会
+  /// 再撞一次；不去重就是隔几秒刷一条同样的横幅，真正的告警反而被淹没。
+  /// 上限是子网里的地址数，不会无限增长。
+  final Set<String> _mismatchWarned = <String>{};
   String? _selfIp;
   bool _scanning = false;
   bool _disposed = false;
@@ -62,6 +70,8 @@ class DiscoveryService {
 
   Future<void> start() async {
     if (isRunning) return;
+    // 每轮启动重新允许告警一次：换网络之后同一地址可能是另一台设备。
+    _mismatchWarned.clear();
     _selfIp = await resolveLocalIp(settings.networkInterface);
     if (_selfIp == null) {
       onError('没有找到可用的局域网地址，请检查网络连接');
@@ -381,7 +391,7 @@ class DiscoveryService {
           final Map<String, dynamic>? payload = _decode(body);
           if (payload == null) return;
           if (!_certMatchesClaim(response, payload)) {
-            onError('$ip 出示的证书与它声明的指纹不一致，已忽略');
+            _reportMismatch(ip);
             return;
           }
           final WispDevice device = WispDevice.fromJson(payload, ip: ip);
@@ -399,14 +409,36 @@ class DiscoveryService {
   ///
   /// 自签证书没有 CA 可验，能做的第一步就是这个：想冒充别人，光换一张
   /// 证书不够，报文里的 `fingerprint` 也得跟着换，而那个字段正是我们
-  /// 回连时用来校验的。返回 true 也包括「对端没报指纹 / 走明文」这种
-  /// 无法判定的情况——那是协议兼容的代价，不在这里拦。
+  /// 回连时用来校验的。返回 true 也包括「对端没报指纹 / 走明文 / 报的不是
+  /// 证书指纹形状」这种无法判定的情况——那是协议兼容的代价，不在这里拦。
   bool _certMatchesClaim(HttpClientResponse response, Map<String, dynamic> payload) {
     final bool? ok = WispTls.certMatchesClaim(
       response.certificate,
       payload['fingerprint'] as String?,
     );
     return ok ?? true;
+  }
+
+  /// 同一台设备只告警一次，避免每轮扫描刷一条同样的横幅。
+  void _reportMismatch(String ip) {
+    if (!_mismatchWarned.add(ip)) return;
+    onError('$ip 出示的证书与它声明的指纹不一致，已忽略');
+  }
+
+  /// 只对单个地址跑一次探测（不走组播、不扫全段）。
+  ///
+  /// 给测试用：证书比对的误报在真实网络里表现为"设备凭空消失 + 横幅刷屏"，
+  /// 必须能在不接真实局域网的情况下钉死。
+  @visibleForTesting
+  Future<void> probeAddress(String ip) async {
+    final HttpClient client = HttpClient()
+      ..connectionTimeout = const Duration(milliseconds: 1200)
+      ..badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+    try {
+      await _probe(client, ip);
+    } finally {
+      client.close(force: true);
+    }
   }
 
   /// 扫描要探的端口列表：当前端口优先，再补默认端口（去重）。
@@ -444,7 +476,7 @@ class DiscoveryService {
       final Map<String, dynamic>? payload = _decode(body);
       if (payload == null) return null;
       if (!_certMatchesClaim(response, payload)) {
-        onError('$ip 出示的证书与它声明的指纹不一致，已忽略');
+        _reportMismatch(ip);
         return null;
       }
       return WispDevice.fromJson(payload, ip: ip);

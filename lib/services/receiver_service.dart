@@ -212,9 +212,10 @@ class ReceiverService {
 
     final WispDevice sender = WispDevice.fromJson(info, ip: remoteIp);
 
-    // 证书必须与对方在报文里声明的指纹一致。自签证书没有 CA 可验，
-    // 这是唯一能确认「对面就是它自称的那台设备」的手段；不比对的话，
-    // 任何一张证书都能握手成功，加密等于只防了旁观者。
+    // 入站请求里的 `request.certificate` 只有在服务端**主动索取客户端证书**
+    // 时才非空；Dart 的 HttpClient 不支持配置客户端证书，所以我们从不索取，
+    // 这里实际上恒为 null。保留这段是为了将来真做 mTLS 时能直接生效，
+    // 但**不要**把它当成"接收端已经验证了发送方身份"——现在的接收端做不到。
     final bool? certOk =
         WispTls.certMatchesClaim(request.certificate, info['fingerprint'] as String?);
     if (certOk == false) {
