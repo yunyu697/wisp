@@ -642,6 +642,13 @@ class SelfTestRunner {
     await Future<void>.delayed(const Duration(milliseconds: 400));
     final Map<String, Object?> status = await DesktopService.surfaceStatus();
     final Object? toast = status['toast'];
+    // 位置必须落在工作区内，不能停在屏幕外。
+    //
+    // 注意取样顺序：这里要在 hideToast 之前取窗口矩形，否则拿回来的是
+    // "已经收起"的状态，报告会打印出 visible=false，跟"visible+drawn
+    // 均为真"的结论自相矛盾，排查时白白怀疑半天。
+    final Map<String, Object?> all = await _windows();
+    final Map<String, Object?> rect = _rect(all['toast']);
     await DesktopService.hideToast();
     if (toast is! Map) throw StateError('拿不到通知卡状态：$status');
     if (toast['visible'] != true) {
@@ -650,9 +657,6 @@ class SelfTestRunner {
     if (toast['drawn'] != true) {
       throw StateError('通知卡窗口在但没画出来：$toast');
     }
-    // 位置必须落在工作区内，不能停在屏幕外。
-    final Map<String, Object?> all = await _windows();
-    final Map<String, Object?> rect = _rect(all['toast']);
     if (!_inside(rect, all)) {
       throw StateError('通知卡停在屏幕外：$rect');
     }
