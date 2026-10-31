@@ -9,10 +9,15 @@ class WispReleaseNotes {
   const WispReleaseNotes._();
 
   /// 当前应用版本（与 pubspec.yaml 的 `version:` 保持一致）。
-  static const String currentVersion = '1.0.19';
+  static const String currentVersion = '1.0.20';
 
   /// 新版本在前，设置页按这个顺序展示。
   static const List<WispReleaseEntry> entries = <WispReleaseEntry>[
+    WispReleaseEntry(version: '1.0.20', changes: <String>[
+      '修复接收端文件名漏洞：对端可以把文件写到下载目录之外（例如开机启动目录），自动接收时用户毫无察觉；现在文件名只保留纯文件名，并强制校验落点必须在本次接收目录内',
+      '修复多文件并发上传时，接收端历史里出现两条一模一样记录的问题',
+      '发布流程加质量门：构建前先跑静态分析与自动化测试，不通过就不出安装包',
+    ]),
     WispReleaseEntry(version: '1.0.19', changes: <String>[
       '修复 macOS 版「无法占用端口：Operation not permitted」：Release 版误开了沙盒又没给网络权限，现已关闭沙盒（本应用不经过 Mac App Store，沙盒只有害处）',
       '补齐 macOS 本地网络权限声明，系统会正常弹出授权询问，不再静默失败',

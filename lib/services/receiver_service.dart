@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../core/constants.dart';
+import '../core/file_names.dart';
 import '../models/device.dart';
 import '../models/transfer.dart';
 import 'discovery_service.dart';
@@ -331,7 +332,7 @@ class ReceiverService {
       await request.response.close();
 
       if (session.session.status == TransferStatus.completed) {
-        onFinished(session.session);
+        if (session.markFinished()) onFinished(session.session);
         _dropSession(sessionId);
       }
     } catch (e) {
@@ -348,7 +349,7 @@ class ReceiverService {
       }
       session.session.status = TransferStatus.failed;
       session.session.error = '$e';
-      onFinished(session.session);
+      if (session.markFinished()) onFinished(session.session);
       _dropSession(sessionId);
       await _json(request, 500, <String, dynamic>{'message': 'write failed'});
     }
@@ -361,7 +362,7 @@ class ReceiverService {
       if (session != null) {
         _dropSession(sessionId);
         session.session.status = TransferStatus.canceled;
-        onFinished(session.session);
+        if (session.markFinished()) onFinished(session.session);
       }
     }
     request.response.statusCode = 200;
@@ -442,21 +443,51 @@ class _ReceiveSession {
   final TransferSession session;
   final Directory directory;
   final Set<String> _used = <String>{};
+  bool _finished = false;
+
+  /// 完成回调只允许发一次，返回这次是否轮到它。
+  ///
+  /// 发送端是两个 worker 并发上传的，多个文件几乎同时结束时都会看到
+  /// `progress >= 1`，各自回调一次——接收端历史里就会出现两条一模一样的
+  /// 记录。这里用一次性闸门收口。
+  bool markFinished() {
+    if (_finished) return false;
+    _finished = true;
+    return true;
+  }
 
   /// 同名文件不覆盖，追加 (1)(2) 后缀。
+  ///
+  /// [name] 来自对端报文，**不可信**：先过 [safeFileName] 收成纯文件名，
+  /// 再由 [_child] 兜底断言落点仍在会话目录内。
   Future<File> reserve(String name) async {
-    String candidate = name;
+    final String safe = safeFileName(name);
+    String candidate = safe;
     int index = 1;
-    while (_used.contains(candidate) ||
-        await File('${directory.path}${Platform.pathSeparator}$candidate').exists()) {
-      final int dot = name.lastIndexOf('.');
+    File target = _child(candidate);
+    while (_used.contains(candidate) || await target.exists()) {
+      final int dot = safe.lastIndexOf('.');
       candidate = dot <= 0
-          ? '$name ($index)'
-          : '${name.substring(0, dot)} ($index)${name.substring(dot)}';
+          ? '$safe ($index)'
+          : '${safe.substring(0, dot)} ($index)${safe.substring(dot)}';
       index++;
+      target = _child(candidate);
     }
     _used.add(candidate);
-    return File('${directory.path}${Platform.pathSeparator}$candidate');
+    return target;
+  }
+
+  /// 把文件名拼进会话目录，并断言没有逃出去。
+  ///
+  /// [safeFileName] 已经剥掉了分隔符，这里是第二道闸——将来有人改了净化
+  /// 规则、或者从别处传了未经净化的名字进来，也写不到目录外面去。
+  File _child(String name) {
+    final String root = directory.absolute.path;
+    final File file = File('$root${Platform.pathSeparator}$name');
+    if (!file.absolute.path.startsWith('$root${Platform.pathSeparator}')) {
+      throw StateError('拒绝写入会话目录之外的路径：$name');
+    }
+    return file;
   }
 }
 

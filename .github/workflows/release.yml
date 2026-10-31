@@ -25,8 +25,40 @@ env:
   FLUTTER_VERSION: '3.47.8'
 
 jobs:
+  # 质量门：标签一推就先跑静态分析与测试，挂了根本不进构建。
+  # 此前这里只有 build —— 等于「推 tag 就把没跑过一行测试的二进制发出去」。
+  #
+  # 用 ubuntu：测试是纯 Dart VM，不需要桌面工具链，起得比 windows 快；
+  # golden 用 --exclude-tags 跳过（基准图在本机 Windows 上维护，
+  # 跨平台光栅化不保证逐像素一致，放进来只会变成假失败）。
+  # 证书要先现场生成：assets/certs 的私钥不入库，而 lan_tls_test 会真起
+  # TLS 接收端，缺证书时 isSecure 断言必挂。
+  quality:
+    name: Analyze & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Generate self-signed certificate
+        run: bash tools/gen_cert.sh
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test --exclude-tags golden
+
   build:
     name: Build ${{ matrix.target }}
+    needs: quality
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

@@ -1,0 +1,8 @@
+# 测试标签。
+#
+# golden 的基准图是在本机 Windows 上生成的，字体与光栅化结果跟 CI 的
+# runner 不一定逐像素一致。CI 只跑逻辑测试（--exclude-tags golden），
+# 视觉基准留到本机维护：flutter test test/golden_test.dart --update-goldens
+tags:
+  golden:
+    description: 视觉基准截图，仅在本机维护与比对
