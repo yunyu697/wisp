@@ -1,11 +1,11 @@
 {
-  "version": "1.0.21",
-  "notes": "修复上一版引入的误报：Wisp 上报的是 32 位设备标识而非证书哈希，上一版却拿它比 64 位证书哈希，导致每台真实设备都被判成「证书与声明不符」——设备从列表消失、提示反复弹出。现在只有证书哈希形状的声明才参与比对，同一设备的告警只提示一次。",
-  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v1.0.21/wisp-windows-x64-1.0.21-setup.exe",
+  "version": "1.0.22",
+  "notes": "「识别用户名」改成同名才互相可见：设了用户名后只显示同名设备，也只有同名设备看得到你；比对忽略大小写与首尾空格；用户名不一致的设备不再收到任何响应，也无法直接发起传输。",
+  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v1.0.22/wisp-windows-x64-1.0.22-setup.exe",
   "downloads": {
-    "windows": "https://github.com/yunyu697/wisp/releases/download/v1.0.21/wisp-windows-x64-1.0.21-setup.exe",
-    "macos": "https://github.com/yunyu697/wisp/releases/download/v1.0.21/wisp-macos-1.0.21.dmg",
-    "linux": "https://github.com/yunyu697/wisp/releases/download/v1.0.21/wisp-linux-x64-1.0.21.AppImage",
-    "android": "https://github.com/yunyu697/wisp/releases/download/v1.0.21/wisp-android-1.0.21.apk"
+    "windows": "https://github.com/yunyu697/wisp/releases/download/v1.0.22/wisp-windows-x64-1.0.22-setup.exe",
+    "macos": "https://github.com/yunyu697/wisp/releases/download/v1.0.22/wisp-macos-1.0.22.dmg",
+    "linux": "https://github.com/yunyu697/wisp/releases/download/v1.0.22/wisp-linux-x64-1.0.22.AppImage",
+    "android": "https://github.com/yunyu697/wisp/releases/download/v1.0.22/wisp-android-1.0.22.apk"
   }
 }

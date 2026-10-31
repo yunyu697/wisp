@@ -9,10 +9,16 @@ class WispReleaseNotes {
   const WispReleaseNotes._();
 
   /// 当前应用版本（与 pubspec.yaml 的 `version:` 保持一致）。
-  static const String currentVersion = '1.0.21';
+  static const String currentVersion = '1.0.22';
 
   /// 新版本在前，设置页按这个顺序展示。
   static const List<WispReleaseEntry> entries = <WispReleaseEntry>[
+    WispReleaseEntry(version: '1.0.22', changes: <String>[
+      '「识别用户名」改成同名才互相可见：设了用户名之后，只显示同名的设备，也只有同名的设备看得到你（以前只有你单方面看不到别人，没设用户名的人照样能看见你）',
+      '用户名比对忽略首尾空格与大小写；空对空算同名，设了名字的设备与没设的设备互相隐藏',
+      '接收端不再对用户名不一致的设备作出任何响应（此前对方扫一遍网段就知道你在），也拒绝它们直接发起的传输',
+      '手动输入 IP 连接时，若对方属于其他用户会明确提示，不再只报"连不上"',
+    ]),
     WispReleaseEntry(version: '1.0.21', changes: <String>[
       '修复「出示的证书与它声明的指纹不一致，已忽略」反复弹出、设备列表里看不到对方的问题：Wisp 上报的设备标识是 32 位随机串，不是证书哈希，上一版却拿它去比 64 位证书哈希，于是每台真实设备都被判成冒充。现在只有形状确实是证书哈希的声明才参与比对',
       '同一条证书告警对同一台设备只提示一次，不再每轮扫描刷一条',
