@@ -1,11 +1,11 @@
 {
-  "version": "1.0.17",
-  "notes": "修复点击下载链接没反应（改用系统 API 唤起默认浏览器）；下载列表按平台给出对应产物；移除失效镜像 gh.llkk.cc。",
-  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v1.0.17/wisp-windows-x64-1.0.17-setup.exe",
+  "version": "1.0.18",
+  "notes": "根治通知「要第二次才会出现」：卡片位置固定、动画只调透明度，发出后确认像素是否真画出来、没画出来自动重发；修复通知出现后再打开主窗口变黑（连续强制重绘）。",
+  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v1.0.18/wisp-windows-x64-1.0.18-setup.exe",
   "downloads": {
-    "windows": "https://github.com/yunyu697/wisp/releases/download/v1.0.17/wisp-windows-x64-1.0.17-setup.exe",
-    "macos": "https://github.com/yunyu697/wisp/releases/download/v1.0.17/wisp-macos-1.0.17.dmg",
-    "linux": "https://github.com/yunyu697/wisp/releases/download/v1.0.17/wisp-linux-x64-1.0.17.AppImage",
-    "android": "https://github.com/yunyu697/wisp/releases/download/v1.0.17/wisp-android-1.0.17.apk"
+    "windows": "https://github.com/yunyu697/wisp/releases/download/v1.0.18/wisp-windows-x64-1.0.18-setup.exe",
+    "macos": "https://github.com/yunyu697/wisp/releases/download/v1.0.18/wisp-macos-1.0.18.dmg",
+    "linux": "https://github.com/yunyu697/wisp/releases/download/v1.0.18/wisp-linux-x64-1.0.18.AppImage",
+    "android": "https://github.com/yunyu697/wisp/releases/download/v1.0.18/wisp-android-1.0.18.apk"
   }
 }

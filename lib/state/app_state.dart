@@ -160,14 +160,7 @@ class AppState extends ChangeNotifier {
     final ReceiverService receiver = ReceiverService(
       settings: settings,
       onIncoming: (IncomingRequest request) {
-        incoming = request;
-        _bubbleShown = false;
-        _bubbleAccepted = false;
-        _toastShown = false;
-        _progressSurfaceShown = false;
-        _desktopSuppressed = false;
-        unawaited(_notifyDesktopIncoming(request));
-        notifyListeners();
+        handleIncomingRequest(request);
         return request.decision;
       },
       onProgress: (TransferSession session) {
@@ -728,6 +721,28 @@ class AppState extends ChangeNotifier {
   // 接收
   // ---------------------------------------------------------------------------
 
+  /// 收到接收请求的统一入口：网络回调和自测都走这里。
+  ///
+  /// 单独抽出来是为了让自测能驱动**真实**的通知分流逻辑
+  /// （decideIncomingSurface + 桌面流程状态机），而不是绕过它直接调原生通道——
+  /// 绕过的那条路测不出"第一次不出现、第二次才出现"这类问题。
+  void handleIncomingRequest(IncomingRequest request) {
+    incoming = request;
+    // 每次都是全新的一条流程：先把上一条流程的桌面状态清干净。
+    _bubbleShown = false;
+    _bubbleAccepted = false;
+    _toastShown = false;
+    _progressSurfaceShown = false;
+    _desktopSuppressed = false;
+    unawaited(_notifyDesktopIncoming(request));
+    notifyListeners();
+  }
+
+  /// 传输结束后的桌面收尾（网络层和自测都走这里）。
+  void handleTransferFinished(TransferSession session) {
+    _notifyDesktopFinished(session);
+  }
+
   void acceptIncoming({Set<String>? fileIds}) {
     incoming?.resolve(ReceiveDecision.accept(fileIds: fileIds));
     incoming = null;
@@ -779,23 +794,91 @@ class AppState extends ChangeNotifier {
     _useBallForFlow = useBallFlow(surface);
     if (_useBallForFlow) {
       await DesktopService.showBallAlert();
-      _showIncomingBubble(request);
+      _bubbleShown = true;
+      _bubbleAccepted = false;
+      await _desktopNotice(
+        onBall: true,
+        title: request.sender.alias,
+        body: '想发送 ${request.files.length} 个文件（${Format.bytes(total)}），是否接收？',
+        mode: DesktopService.bubbleAsk,
+      );
     } else {
       _toastShown = true;
-      unawaited(DesktopService.showToast('收到传输请求', body,
-          mode: DesktopService.bubbleAsk));
+      await _desktopNotice(
+        onBall: false,
+        title: '收到传输请求',
+        body: body,
+        mode: DesktopService.bubbleAsk,
+      );
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // 桌面浮层的"发 → 查 → 没出来就重发"闭环
+  // ---------------------------------------------------------------------------
+
+  /// 点悬浮球时补弹询问气泡（请求还在、但球侧还没弹过）。
   void _showIncomingBubble(IncomingRequest request) {
-    final int total = request.files.fold(0, (int sum, TransferFile f) => sum + f.size);
+    final int total =
+        request.files.fold(0, (int sum, TransferFile f) => sum + f.size);
     _bubbleShown = true;
     _bubbleAccepted = false;
-    unawaited(DesktopService.showBubble(
-      request.sender.alias,
-      '想发送 ${request.files.length} 个文件（${Format.bytes(total)}），是否接收？',
+    unawaited(_desktopNotice(
+      onBall: true,
+      title: request.sender.alias,
+      body: '想发送 ${request.files.length} 个文件（${Format.bytes(total)}），是否接收？',
       mode: DesktopService.bubbleAsk,
     ));
+  }
+
+  /// 让某条桌面通道显示一段内容。
+  ///
+  /// * [isUpdate]=true：在已经弹出的那张卡/气泡上改内容；
+  /// * [isUpdate]=false：全新弹一张。
+  ///
+  /// 两条硬约束，都是用户投诉过的：
+  /// 1. 弹完必须**确认它真的画出来了**（visible + drawn）。以前是"发一次就
+  ///    当成功"，原生层没画出来时这一次请求就悄无声息地过去了，用户得等
+  ///    下一次请求才看到通知——也就是"要第二次才会出现"。
+  /// 2. 改内容时如果原来那张已经不在了（超时收掉了），必须改成全新弹一张；
+  ///    否则 update 是空操作，发送方取消/传输完成这类结局提示会被吞掉。
+  Future<void> _desktopNotice({
+    required bool onBall,
+    required String title,
+    required String body,
+    required int mode,
+    bool isUpdate = false,
+    String progress = '',
+  }) async {
+    final String which = onBall ? 'bubble' : 'toast';
+    if (isUpdate && await _surfaceReady(which)) {
+      if (onBall) {
+        await DesktopService.updateBubble(body, mode: mode, progress: progress);
+      } else {
+        await DesktopService.updateToast(body, mode: mode, progress: progress);
+      }
+      if (await _surfaceReady(which)) return;
+      // 更新没生效（那张刚好被收走了），落到下面重新弹一张。
+    }
+    for (int attempt = 0; attempt < 2; attempt++) {
+      if (onBall) {
+        await DesktopService.showBubble(title, body, mode: mode, progress: progress);
+      } else {
+        await DesktopService.showToast(title, body, mode: mode, progress: progress);
+      }
+      if (await _surfaceReady(which)) return;
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+    }
+  }
+
+  /// 原生层确认某个浮层已经真的画出来了。
+  ///
+  /// 只看 visible 会被"窗口在、内容空"骗过去，所以两个条件都要满足。
+  Future<bool> _surfaceReady(String which) async {
+    final Map<String, Object?> status = await DesktopService.surfaceStatus();
+    final Object? raw = status[which];
+    if (raw is! Map) return false;
+    return raw['visible'] == true && raw['drawn'] == true;
   }
 
   /// 接收中的高频进度回调：同步刷新进度面板（200ms 节流）。
@@ -816,30 +899,21 @@ class AppState extends ChangeNotifier {
     final String progress = '$percent%$speed';
     if (!_progressSurfaceShown) {
       _progressSurfaceShown = true;
-      unawaited(_useBallForFlow
-          ? DesktopService.showBubble(
-              '正在接收',
-              '${session.peerAlias} 发来的 ${session.files.length} 个文件',
-              mode: DesktopService.bubbleProgress,
-              progress: progress,
-            )
-          : DesktopService.showToast(
-              '正在接收',
-              '${session.peerAlias} 发来的 ${session.files.length} 个文件',
-              mode: DesktopService.bubbleProgress,
-              progress: progress,
-            ));
-    } else if (_useBallForFlow) {
-      unawaited(DesktopService.updateBubble(
-        '正在接收 ${session.peerAlias} 的 ${session.files.length} 个文件…',
+      unawaited(_desktopNotice(
+        onBall: _useBallForFlow,
+        title: '正在接收',
+        body: '${session.peerAlias} 发来的 ${session.files.length} 个文件',
         mode: DesktopService.bubbleProgress,
         progress: progress,
       ));
     } else {
-      unawaited(DesktopService.updateToast(
-        '${session.peerAlias} 发来的 ${session.files.length} 个文件',
+      unawaited(_desktopNotice(
+        onBall: _useBallForFlow,
+        title: '正在接收',
+        body: '正在接收 ${session.peerAlias} 的 ${session.files.length} 个文件…',
         mode: DesktopService.bubbleProgress,
         progress: progress,
+        isUpdate: true,
       ));
     }
   }
@@ -861,26 +935,27 @@ class AppState extends ChangeNotifier {
       return;
     }
     if (session.status == TransferStatus.completed) {
-      unawaited(flowOnBall
-          ? DesktopService.showBubble(
-              '接收完成',
-              '${session.files.length} 个文件已保存，是否打开保存目录？',
-              mode: DesktopService.bubbleDone,
-            )
-          : DesktopService.showToast(
-              '接收完成',
-              '${session.files.length} 个文件已保存，是否打开保存目录？',
-              mode: DesktopService.bubbleDone,
-            ));
+      unawaited(_desktopNotice(
+        onBall: flowOnBall,
+        title: '接收完成',
+        body: '${session.files.length} 个文件已保存，是否打开保存目录？',
+        mode: DesktopService.bubbleDone,
+      ));
     } else {
       // 发送方取消（/cancel）或连接中断：在原卡片上显示提示，
       // 原生层按 mode=canceled 的存活时间（3 秒）自动收起，回到原状态。
+      // 原来那张卡要是已经超时收掉了，就新弹一张——不然这条提示会被吞掉，
+      // 用户根本不知道传输结束了。
       final String hint = session.status == TransferStatus.canceled
           ? '${session.peerAlias} 取消了发送'
           : '与 ${session.peerAlias} 的连接中断，传输未完成';
-      unawaited(flowOnBall
-          ? DesktopService.updateBubble(hint, mode: DesktopService.bubbleCanceled)
-          : DesktopService.updateToast(hint, mode: DesktopService.bubbleCanceled));
+      unawaited(_desktopNotice(
+        onBall: flowOnBall,
+        title: '传输已结束',
+        body: hint,
+        mode: DesktopService.bubbleCanceled,
+        isUpdate: true,
+      ));
     }
     unawaited(DesktopService.collapseBall());
   }

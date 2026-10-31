@@ -88,6 +88,10 @@ class FlutterWindow : public Win32Window {
   int bubble_mode_ = 0;           // 0=ask 1=progress 2=done
   UINT_PTR bubble_timeout_timer_ = 0;
   POINT bubble_anchor_{0, 0};     // 气泡左上角的固定落点（屏幕坐标）
+  // 气泡这一轮流程是否活着（比 IsWindowVisible 准，窗口刚隐藏时会误判）。
+  bool bubble_active_ = false;
+  // 最近一次绘制是否真的成功（UpdateLayeredWindow 没报错）。
+  bool bubble_drawn_ = false;
 
   // --- custom toast notification (bottom-right card) ---
   HWND toast_window_ = nullptr;
@@ -98,8 +102,11 @@ class FlutterWindow : public Win32Window {
   UINT_PTR toast_timeout_timer_ = 0;
   UINT_PTR toast_anim_timer_ = 0;
   int toast_anim_phase_ = 0;
-  POINT toast_anchor_{0, 0};  // 卡片落点；动画帧只相对它做位移，绝不累加
+  POINT toast_anchor_{0, 0};  // 卡片落点（位置永远固定，动画只调透明度）
+  bool toast_active_ = false;
+  bool toast_drawn_ = false;
   UINT_PTR restore_redraw_timer_ = 0;
+  int restore_redraw_step_ = 0;
 
   // --- tray ---
   void CreateTrayIcon();
@@ -120,8 +127,14 @@ class FlutterWindow : public Win32Window {
   void HideToast();
   void CreateToastWindow();
   void DestroyToastWindow();
-  void RenderToast(float slide_t);   // slide_t: 0=画外 1=就位
+  void RenderToast(float fade);   // fade: 0..1 整体不透明度，位置固定
   void HandleToastClick(POINT pt);
+
+  // --- 主窗口重绘 ---
+  // 收起置顶浮层 / 从隐藏态恢复后必须强制重绘，否则主窗口会留黑块。
+  void ForceMainWindowRepaint();
+  void ScheduleRestoreRedraws();
+  void RunRestoreRedrawStep();
 
   // --- 打开外部链接 ---
   // 用 ShellExecuteW 把 http(s) 交给系统默认浏览器。

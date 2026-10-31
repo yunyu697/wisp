@@ -10,7 +10,9 @@ import '../core/utils/external.dart';
 import '../models/device.dart';
 import '../models/transfer.dart';
 import '../services/desktop_service.dart';
+import '../services/receiver_service.dart';
 import '../services/sender_service.dart';
+import '../state/app_state.dart';
 
 /// 受控端到端自测入口。
 ///
@@ -118,6 +120,15 @@ class SelfTestRunner {
     if (options.selfTest) {
       await _step('send_loopback', _sendLoopback);
       await _step('toast_visible', _toastVisible);
+      await _step('toast_first_shot', _toastFirstShotWhenHidden);
+      await _step('toast_painted', _toastPaintedFirstShot);
+      await _step('surface_drawn', _surfaceDrawnConfirmed);
+      await _step('notice_survives', _noticeSurvivesMissingCard);
+      await _step('real_incoming_flow', _realIncomingFlow);
+      await _step('real_incoming_blurred', _realIncomingFlowBlurred);
+      await _step('main_not_black_activate', _mainWindowNotBlackOnActivate);
+      await _step('main_not_black_tray', _mainWindowNotBlack);
+      await _step('main_not_black_taskbar', _mainWindowNotBlackTaskbar);
       await _step('bubble_visible', _bubbleVisible);
       await _step('ball_hidden_bubble', _bubbleBesideHandle);
     }
@@ -410,6 +421,275 @@ class SelfTestRunner {
     if (toast['visible'] != true) throw StateError('通知卡没有显示：$toast');
     if (!_inside(toast, all)) throw StateError('通知卡跑到工作区外：$toast');
     return '位置 $toast 在工作区内';
+  }
+
+  /// 主窗口收进托盘（隐藏）时，第一次弹通知卡必须立刻出现。
+  ///
+  /// 用户报的"要第二次才会出现"就复现在这里：主窗口开着时能弹，
+  /// 收进托盘后第一次反而不出来。
+  Future<String?> _toastFirstShotWhenHidden() async {
+    await DesktopService.debugSetMainVisible(false);
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    await DesktopService.showToast('收到传输请求', 'SelfTest 想发送 1 个文件（96 KB）',
+        mode: DesktopService.bubbleAsk);
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    final Map<String, Object?> all = await _windows();
+    final Map<String, Object?> toast = _rect(all['toast']);
+    await DesktopService.hideToast();
+    await DesktopService.debugSetMainVisible(true);
+    if (toast['visible'] != true) {
+      throw StateError('主窗口隐藏时第一次通知卡没有出现：$toast');
+    }
+    return '托盘态第一次就弹出来了：$toast';
+  }
+
+  /// 通知出现后再打开主窗口，主窗口不能黑屏。
+  ///
+  /// 两种"打开主窗口"的路径都要试：托盘菜单（showWindow → RestoreWindow，
+  /// 内部有 ForceRedraw）和任务栏直接点亮（没有 ForceRedraw）。
+  Future<String?> _mainWindowNotBlack() async {
+    await DesktopService.debugSetMainVisible(true);
+    await Future<void>.delayed(const Duration(milliseconds: 900));
+    final Map<String, Object?> baseline = await DesktopService.debugCapture('main');
+    final double baseMean = (baseline['mean'] as num?)?.toDouble() ?? 0;
+    if (baseMean < 20) {
+      throw StateError('基线就不正常（亮度 $baseMean），先别测黑屏');
+    }
+
+    // 收进托盘 → 弹通知 → 用户再点回主窗口。
+    await DesktopService.debugSetMainVisible(false);
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    await DesktopService.showToast('收到传输请求', 'SelfTest 想发送 1 个文件（96 KB）',
+        mode: DesktopService.bubbleAsk);
+    await Future<void>.delayed(const Duration(milliseconds: 800));
+
+    await DesktopService.showWindow();
+    await Future<void>.delayed(const Duration(milliseconds: 1500));
+    final Map<String, Object?> afterTray = await DesktopService.debugCapture('main');
+    final double trayMean = (afterTray['mean'] as num?)?.toDouble() ?? 0;
+    final double trayDark = (afterTray['dark'] as num?)?.toDouble() ?? 0;
+
+    await DesktopService.hideToast();
+    if (trayMean < baseMean * 0.35 || trayDark > 0.6) {
+      throw StateError('从托盘唤回主窗口后黑屏：基线 $baseMean → $trayMean（黑像素 $trayDark）');
+    }
+    return '托盘唤回：基线 $baseMean → $trayMean（黑像素 $trayDark）';
+  }
+
+  /// 任务栏直接点亮主窗口（不走 RestoreWindow，没有 ForceRedraw）时也不能黑屏。
+  Future<String?> _mainWindowNotBlackTaskbar() async {
+    await DesktopService.debugSetMainVisible(true);
+    await Future<void>.delayed(const Duration(milliseconds: 900));
+    final Map<String, Object?> baseline = await DesktopService.debugCapture('main');
+    final double baseMean = (baseline['mean'] as num?)?.toDouble() ?? 0;
+    if (baseMean < 20) {
+      throw StateError('基线就不正常（亮度 $baseMean），先别测黑屏');
+    }
+
+    await DesktopService.debugSetMainVisible(false);
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    await DesktopService.showToast('收到传输请求', 'SelfTest 想发送 1 个文件（96 KB）',
+        mode: DesktopService.bubbleAsk);
+    await Future<void>.delayed(const Duration(milliseconds: 800));
+
+    await DesktopService.debugSetMainVisible(true);
+    await Future<void>.delayed(const Duration(milliseconds: 1500));
+    final Map<String, Object?> after = await DesktopService.debugCapture('main');
+    final double mean = (after['mean'] as num?)?.toDouble() ?? 0;
+    final double dark = (after['dark'] as num?)?.toDouble() ?? 0;
+
+    await DesktopService.hideToast();
+    if (mean < baseMean * 0.35 || dark > 0.6) {
+      throw StateError('任务栏点亮后黑屏：基线 $baseMean → $mean（黑像素 $dark）');
+    }
+    return '任务栏点亮：基线 $baseMean → $mean（黑像素 $dark）';
+  }
+
+  /// 通知卡必须真的画出了像素。
+  ///
+  /// IsWindowVisible 只说明窗口"显示了"，不代表上面有东西——
+  /// 用户看到的"要第二次才会出现"很可能就是第一次根本没画出来。
+  /// 这一步把通知卡区域从屏幕上抓下来存成 PNG，并报出亮度。
+  Future<String?> _toastPaintedFirstShot() async {
+    await DesktopService.debugSetMainVisible(false);
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    await DesktopService.showToast('收到传输请求', 'SelfTest 想发送 1 个文件（96 KB）',
+        mode: DesktopService.bubbleAsk);
+    await Future<void>.delayed(const Duration(milliseconds: 800));
+    final Map<String, Object?> shot = await DesktopService.debugCapture('toast');
+    final Map<String, Object?> all = await _windows();
+    final Map<String, Object?> toast = _rect(all['toast']);
+    await DesktopService.hideToast();
+    await DesktopService.debugSetMainVisible(true);
+    if (toast['visible'] != true) {
+      throw StateError('通知卡没有显示：$toast');
+    }
+    final double mean = (shot['mean'] as num?)?.toDouble() ?? 0;
+    return '通知卡可见=$toast，区域平均亮度 $mean（PNG 已落盘到 exe 同目录）';
+  }
+
+  /// 走**真实**的通知分流逻辑（AppState.handleIncomingRequest），
+  /// 而不是直接调原生通道。
+  ///
+  /// 直接调 showToast 测不到 decideIncomingSurface 的判断——
+  /// 用户报的"要第二次才会出现"就出在那一层。
+  /// 这里模拟真实场景：主窗口收进托盘，用户在忙别的，这时来一个请求。
+  Future<String?> _realIncomingFlow() async {
+    final AppState state = AppState();
+    await DesktopService.debugSetMainVisible(false);
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+
+    state.handleIncomingRequest(_fakeRequest());
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    final Map<String, Object?> all = await _windows();
+    final Map<String, Object?> toast = _rect(all['toast']);
+    final Map<String, Object?> bubble = _rect(all['bubble']);
+    final Map<String, Object?> shot = await DesktopService.debugCapture('toast');
+
+    await DesktopService.hideToast();
+    await DesktopService.hideBubble();
+    await DesktopService.debugSetMainVisible(true);
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+
+    final bool toastOk = toast['visible'] == true;
+    final bool bubbleOk = bubble['visible'] == true;
+    if (!toastOk && !bubbleOk) {
+      throw StateError('真实流程下第一次没有任何桌面提醒：toast=$toast bubble=$bubble');
+    }
+    final double mean = (shot['mean'] as num?)?.toDouble() ?? 0;
+    return '第一次就出来了：toast=$toast bubble=$bubble，通知卡区域亮度 $mean';
+  }
+
+  /// 伪造一个接收请求。
+  static IncomingRequest _fakeRequest() {
+    final WispDevice sender = WispDevice(
+      alias: 'SelfTest-Peer',
+      ip: '127.0.0.1',
+      fingerprint: 'selftest-fake',
+      port: 53317,
+      https: false,
+    );
+    return IncomingRequest(
+      sender: sender,
+      files: <TransferFile>[
+        TransferFile(id: 'f1', name: 'probe.bin', size: 1024),
+      ],
+    );
+  }
+
+  /// 用户最常见的场景：主窗口**开着但没被使用**（在别的程序上）。
+  ///
+  /// 这时必须弹桌面通知。而"主窗口正被使用"时按设计走应用内弹层。
+  /// 两个场景连起来，正好对应用户说的"要第二次才会出现"——
+  /// 第一次主窗口在前台所以走应用内，第二次切走了才走桌面。
+  Future<String?> _realIncomingFlowBlurred() async {
+    final AppState state = AppState();
+    await DesktopService.debugSetMainVisible(true);
+    await DesktopService.debugBlurMain();
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+
+    state.handleIncomingRequest(_fakeRequest());
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    final Map<String, Object?> all = await _windows();
+    final Map<String, Object?> toast = _rect(all['toast']);
+    final Map<String, Object?> bubble = _rect(all['bubble']);
+
+    await DesktopService.hideToast();
+    await DesktopService.hideBubble();
+    if (toast['visible'] != true && bubble['visible'] != true) {
+      throw StateError(
+          '主窗口开着但没被使用时，第一次请求没有桌面提醒：toast=$toast bubble=$bubble');
+    }
+    return '失焦态第一次就弹出来了：toast=$toast bubble=$bubble';
+  }
+
+  /// 主窗口开着但没被使用时收到通知，随后用户点回主窗口——主窗口不能黑屏。
+  ///
+  /// 这条路径不走 RestoreWindow（没有 ForceRedraw），是最容易黑屏的一条。
+  Future<String?> _mainWindowNotBlackOnActivate() async {
+    await DesktopService.debugSetMainVisible(true);
+    await DesktopService.debugBlurMain();
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    final Map<String, Object?> baseline = await DesktopService.debugCapture('main');
+    final double baseMean = (baseline['mean'] as num?)?.toDouble() ?? 0;
+
+    await DesktopService.showToast('收到传输请求', 'SelfTest 想发送 1 个文件（96 KB）',
+        mode: DesktopService.bubbleAsk);
+    await Future<void>.delayed(const Duration(milliseconds: 800));
+
+    // 用户点回主窗口：置前 → 原生层收到 WM_ACTIVATE → 收起通知卡。
+    await DesktopService.debugFocusMain();
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    final Map<String, Object?> after = await DesktopService.debugCapture('main');
+    final double mean = (after['mean'] as num?)?.toDouble() ?? 0;
+    final double dark = (after['dark'] as num?)?.toDouble() ?? 0;
+
+    await DesktopService.hideToast();
+    if (baseMean > 20 && (mean < baseMean * 0.5 || dark > 0.4)) {
+      throw StateError('点回主窗口后黑屏：基线 $baseMean → $mean（黑像素 $dark）');
+    }
+    return '点回主窗口：基线 $baseMean → $mean（黑像素 $dark）';
+  }
+
+  /// 原生层必须确认"真的画出来了"，而不只是"窗口是可见的"。
+  ///
+  /// 以前通知卡是"先画到屏幕外再滑进来"：动画帧没跑到时窗口在屏幕外，
+  /// 而 IsWindowVisible 仍报 true——这就是"第一次不出现、第二次才出现"。
+  /// 现在位置固定、动画只调透明度，并且原生层会回报 drawn 状态。
+  Future<String?> _surfaceDrawnConfirmed() async {
+    await DesktopService.showToast('收到传输请求', 'SelfTest 想发送 1 个文件（96 KB）',
+        mode: DesktopService.bubbleAsk);
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    final Map<String, Object?> status = await DesktopService.surfaceStatus();
+    final Object? toast = status['toast'];
+    await DesktopService.hideToast();
+    if (toast is! Map) throw StateError('拿不到通知卡状态：$status');
+    if (toast['visible'] != true) {
+      throw StateError('通知卡不可见：$toast');
+    }
+    if (toast['drawn'] != true) {
+      throw StateError('通知卡窗口在但没画出来：$toast');
+    }
+    // 位置必须落在工作区内，不能停在屏幕外。
+    final Map<String, Object?> all = await _windows();
+    final Map<String, Object?> rect = _rect(all['toast']);
+    if (!_inside(rect, all)) {
+      throw StateError('通知卡停在屏幕外：$rect');
+    }
+    return '通知卡 visible+drawn 均为真，且位置在工作区内：$rect';
+  }
+
+  /// 通知卡超时收掉之后，"传输结束"提示必须重新弹一张，而不是被吞掉。
+  ///
+  /// 走 AppState 的真实收尾路径：卡片不在时 updateToast 是空操作，
+  /// 必须退化成"新弹一张"，否则用户根本不知道传输结束了。
+  Future<String?> _noticeSurvivesMissingCard() async {
+    final AppState state = AppState();
+    state.handleIncomingRequest(_fakeRequest());
+    await Future<void>.delayed(const Duration(milliseconds: 900));
+    // 手动把通知卡收掉（模拟超时收起）。
+    await DesktopService.hideToast();
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+
+    final TransferSession session = TransferSession(
+      id: 'selftest-cancel',
+      peerAlias: 'SelfTest-Peer',
+      peerIp: '127.0.0.1',
+      direction: TransferDirection.incoming,
+      files: <TransferFile>[
+        TransferFile(id: 'f1', name: 'probe.bin', size: 1024),
+      ],
+    )..status = TransferStatus.canceled;
+    state.handleTransferFinished(session);
+
+    await Future<void>.delayed(const Duration(milliseconds: 900));
+    final Map<String, Object?> status = await DesktopService.surfaceStatus();
+    final Object? toast = status['toast'];
+    await DesktopService.hideToast();
+    if (toast is! Map || toast['drawn'] != true) {
+      throw StateError('卡片不在时结局提示被吞掉了：$toast');
+    }
+    return '卡片不在时结局提示重新弹出来了';
   }
 
   Future<String?> _bubbleVisible() async {

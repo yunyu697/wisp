@@ -66,9 +66,12 @@ void main() {
     expect(useBallFlow(NotificationSurface.inApp), isFalse);
   });
 
-  test('拿不到原生状态时保守处理：当作用户在看主窗口', () {
-    expect(DesktopWindowState.unknown.userIsLooking, isTrue);
+  test('拿不到原生状态时不能静默吞掉通知：要照常弹桌面提醒', () {
+    // 以前这里当成"用户在看着主窗口"，于是状态一旦拿不到就把通知吞了——
+    // 用户反馈过"要第二次才会出现"，第一次正好被这个默认值吃掉。
+    // 现在拿不到状态就照常打扰：宁可多弹一次，也不能一声不吭。
+    expect(DesktopWindowState.unknown.userIsLooking, isFalse);
     expect(decideIncomingSurface(DesktopWindowState.unknown),
-        NotificationSurface.inApp);
+        NotificationSurface.toast);
   });
 }

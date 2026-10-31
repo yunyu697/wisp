@@ -10,10 +10,14 @@ class DesktopWindowState {
     required this.ballSnapped,
   });
 
-  /// 拿不到原生状态时的保守值：当作"用户在看着主窗口"，不打扰。
+  /// 拿不到原生状态时的兜底值。
+  ///
+  /// 注意这里刻意**不**当成"用户在看着主窗口"：拿不到状态就静默不打扰，
+  /// 等于把通知吞掉——用户反馈过"要第二次才会出现"，最怕的就是这种
+  /// 一次被吞掉、第二次状态正常才弹出来。宁可多弹一次，也不能一声不吭。
   static const DesktopWindowState unknown = DesktopWindowState(
-    visible: true,
-    active: true,
+    visible: false,
+    active: false,
     ballEnabled: false,
     ballExpanded: false,
     ballSnapped: false,
@@ -125,6 +129,56 @@ class DesktopService {
     }
   }
 
+  /// 自测用：把主窗口隐藏/显示出来（复现托盘态收到请求的场景）。
+  static Future<void> debugSetMainVisible(bool visible) async {
+    try {
+      await _channel.invokeMethod<void>(
+          'debugSetMainVisible', <String, bool>{'visible': visible});
+    } on MissingPluginException {
+      // 忽略。
+    } on PlatformException {
+      // 忽略。
+    }
+  }
+
+  /// 自测用：把主窗口置前（模拟用户点回主窗口）。
+  static Future<void> debugFocusMain() async {
+    try {
+      await _channel.invokeMethod<void>('debugFocusMain');
+    } on MissingPluginException {
+      // 忽略。
+    } on PlatformException {
+      // 忽略。
+    }
+  }
+
+  /// 自测用：把焦点挪到别的窗口（模拟主窗口开着但用户忙别的）。
+  static Future<void> debugBlurMain() async {
+    try {
+      await _channel.invokeMethod<void>('debugBlurMain');
+    } on MissingPluginException {
+      // 忽略。
+    } on PlatformException {
+      // 忽略。
+    }
+  }
+
+  /// 自测用：抓某个窗口（main/toast/bubble）的屏幕像素，返回 {ok, mean, dark}。
+  /// mean=平均亮度，dark=接近纯黑的像素占比。原生层会同时存一张 PNG。
+  static Future<Map<String, Object?>> debugCapture(String target) async {
+    try {
+      final Map<Object?, Object?>? raw =
+          await _channel.invokeMethod<Map<Object?, Object?>>(
+              'debugCapture', <String, String>{'target': target});
+      if (raw == null) return <String, Object?>{};
+      return raw.map((Object? k, Object? v) => MapEntry<String, Object?>('$k', v));
+    } on MissingPluginException {
+      return <String, Object?>{};
+    } on PlatformException {
+      return <String, Object?>{};
+    }
+  }
+
   /// 托盘图标闪烁（有新传输请求时）。
   static Future<void> setTrayFlashing(bool enabled) async {
     try {
@@ -133,6 +187,24 @@ class DesktopService {
       // 忽略。
     } on PlatformException {
       // 忽略。
+    }
+  }
+
+  /// 桌面浮层的真实状态（通知卡 / 气泡）。
+  ///
+  /// 返回 {toast: {...}, bubble: {...}}，每项含 visible/active/drawn 与屏幕矩形。
+  /// `drawn` 表示原生层确实把像素画上去了——只看 visible 会被"窗口在、
+  /// 内容空"骗过去。
+  static Future<Map<String, Object?>> surfaceStatus() async {
+    try {
+      final Map<Object?, Object?>? raw =
+          await _channel.invokeMethod<Map<Object?, Object?>>('surfaceStatus');
+      if (raw == null) return <String, Object?>{};
+      return raw.map((Object? k, Object? v) => MapEntry<String, Object?>('$k', v));
+    } on MissingPluginException {
+      return <String, Object?>{};
+    } on PlatformException {
+      return <String, Object?>{};
     }
   }
 

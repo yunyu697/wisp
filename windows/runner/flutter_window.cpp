@@ -7,6 +7,7 @@
 #include <optional>
 #include <shellapi.h>
 #include <string>
+#include <vector>
 #include <windowsx.h>
 
 #include "flutter/generated_plugin_registrant.h"
@@ -68,6 +69,12 @@ constexpr int kCardModeProgress = 1;
 constexpr int kCardModeDone = 2;
 constexpr int kCardModeCanceled = 3;
 
+// 通知卡入场动画的起始不透明度。
+//
+// 不是 0：即使动画帧一次都没跑到（平台线程忙、计时器被清掉），卡片也已经在
+// 正确的位置上、只是淡一点。取 0 就会出现"卡片在屏幕外、用户看不见"的坑。
+constexpr float kToastFadeStart = 0.6f;
+
 UINT_PTR ToastLifetimeMs(int mode) {
   switch (mode) {
     case kCardModeAsk:
@@ -89,6 +96,9 @@ constexpr UINT_PTR kBallLeaveTimerId = 8;
 constexpr UINT_PTR kToastAnimTimerId = 9;
 constexpr UINT_PTR kToastTimeoutTimerId = 10;
 constexpr UINT_PTR kRestoreRedrawTimerId = 11;
+
+// 主窗口恢复后的连续重绘次数（间隔 60/120/240/480/960ms）。
+constexpr int kRestoreRedrawSteps = 6;
 
 // Wisp 品牌色：与 `lib/core/design/app_colors.dart` 的 WispColors 逐值对齐
 // （teal / coral / 暖中性）。改色必须两边同时改，否则通知卡和界面会不同色。
@@ -335,9 +345,27 @@ class LayeredCanvas {
   int width() const { return w_; }
   int height() const { return h_; }
 
+  // 整体不透明度：把画布上每个像素乘上 factor（0..255）。
+  //
+  // 画布是预乘 alpha 的，RGB 已经乘过 alpha，所以 RGB 和 alpha 一起按
+  // 同一个系数缩放，才不会破坏预乘关系（只缩 alpha 会让 RGB > A，
+  // 合成时边缘发亮）。
+  void ApplyAlpha(BYTE factor) {
+    if (bits_ == nullptr || factor == 255) return;
+    BYTE* p = static_cast<BYTE*>(bits_);
+    const size_t count = static_cast<size_t>(w_) * h_;
+    for (size_t i = 0; i < count; i++) {
+      p[i * 4 + 0] = static_cast<BYTE>(p[i * 4 + 0] * factor / 255);
+      p[i * 4 + 1] = static_cast<BYTE>(p[i * 4 + 1] * factor / 255);
+      p[i * 4 + 2] = static_cast<BYTE>(p[i * 4 + 2] * factor / 255);
+      p[i * 4 + 3] = static_cast<BYTE>(p[i * 4 + 3] * factor / 255);
+    }
+  }
+
   // 把画布内容提交到窗口，(x, y) 是窗口左上角的屏幕坐标（可为 nullptr 保持）。
-  void Present(HWND hwnd, const POINT* dst) {
-    if (dc_ == nullptr) return;
+  // 返回 false 表示 UpdateLayeredWindow 失败——调用方据此知道"这次没画出来"。
+  bool Present(HWND hwnd, const POINT* dst) {
+    if (dc_ == nullptr) return false;
     gfx_.reset();
     delete wrapped_;
     wrapped_ = nullptr;
@@ -361,6 +389,7 @@ class LayeredCanvas {
                  std::to_string(GetLastError()));
     }
     Discard();
+    return ok != FALSE;
   }
 
  private:
@@ -557,6 +586,12 @@ void DrawButton(Gdiplus::Graphics& g, const Gdiplus::RectF& r, bool brand,
 }
 
 }  // namespace
+
+// 抓取窗口在屏幕上的真实像素，统计平均亮度与"接近纯黑"的占比。
+// 用来客观判定"主窗口是不是黑屏"——用户能直接看见的故障，不能靠猜。
+// 定义在文件后部（和绘制工具放在一起），这里先前置声明。
+bool CaptureWindowStats(HWND hwnd, double* mean_out, double* dark_out,
+                         const std::wstring& png_path);
 
 // 拖动状态。
 struct BallDragState {
@@ -803,15 +838,15 @@ LRESULT CALLBACK ToastWndProc(HWND hwnd, UINT message, WPARAM wparam,
       if (w == nullptr || w->toast_window_ != hwnd) break;
       if (wparam == kToastAnimTimerId) {
         w->toast_anim_phase_++;
-        int total = 14;
+        // 8 帧淡入（16ms 一帧，约 130ms）。位置不动。
+        const int total = 8;
         float t = w->toast_anim_phase_ / static_cast<float>(total);
         if (t > 1) t = 1;
-        float eased = 1 - (1 - t) * (1 - t);
-        w->RenderToast(eased);
+        w->RenderToast(kToastFadeStart + (1.0f - kToastFadeStart) * t);
         if (w->toast_anim_phase_ >= total) {
           KillTimer(hwnd, kToastAnimTimerId);
           w->toast_anim_timer_ = 0;
-          w->RenderToast(1);
+          w->RenderToast(1.0f);
         }
         return 0;
       }
@@ -1031,6 +1066,109 @@ bool FlutterWindow::OnCreate() {
         } else if (name == "openUrl") {
           // 打开下载链接。返回 true/false，Dart 侧据此提示失败原因。
           result->Success(OpenUrl(GetString("url")) == 0);
+        } else if (name == "surfaceStatus") {
+          // 桌面浮层的真实状态：Dart 侧用它确认"通知真的出来了"，
+          // 没出来就重发一次——解决"第一次不出现、第二次才出现"。
+          auto describe = [](HWND hwnd, bool active, bool drawn) {
+            flutter::EncodableMap m{
+                {flutter::EncodableValue("visible"),
+                 flutter::EncodableValue(hwnd != nullptr &&
+                                         IsWindowVisible(hwnd) != 0)},
+                {flutter::EncodableValue("active"),
+                 flutter::EncodableValue(active)},
+                {flutter::EncodableValue("drawn"),
+                 flutter::EncodableValue(drawn)},
+            };
+            RECT r{0, 0, 0, 0};
+            if (hwnd != nullptr) GetWindowRect(hwnd, &r);
+            m[flutter::EncodableValue("left")] =
+                flutter::EncodableValue(static_cast<int>(r.left));
+            m[flutter::EncodableValue("top")] =
+                flutter::EncodableValue(static_cast<int>(r.top));
+            m[flutter::EncodableValue("right")] =
+                flutter::EncodableValue(static_cast<int>(r.right));
+            m[flutter::EncodableValue("bottom")] =
+                flutter::EncodableValue(static_cast<int>(r.bottom));
+            return m;
+          };
+          flutter::EncodableMap m{
+              {flutter::EncodableValue("toast"),
+               flutter::EncodableValue(describe(toast_window_, toast_active_,
+                                                 toast_drawn_))},
+              {flutter::EncodableValue("bubble"),
+               flutter::EncodableValue(describe(bubble_window_, bubble_active_,
+                                                 bubble_drawn_))},
+          };
+          result->Success(m);
+        } else if (name == "debugSetMainVisible") {
+          // 自测用：把主窗口隐藏/显示出来，复现"托盘态收到请求"这类场景。
+          const bool visible = GetBool("visible", true);
+          HWND main = GetHandle();
+          if (main != nullptr) {
+            ShowWindow(main, visible ? SW_SHOWNORMAL : SW_HIDE);
+          }
+          result->Success();
+        } else if (name == "debugFocusMain") {
+          // 自测用：把主窗口置前（模拟用户点回主窗口）。
+          HWND main = GetHandle();
+          if (main != nullptr) {
+            ShowWindow(main, SW_SHOW);
+            SetForegroundWindow(main);
+          }
+          result->Success();
+        } else if (name == "debugBlurMain") {
+          // 自测用：把焦点挪到别的窗口（模拟主窗口开着但用户忙别的）。
+          HWND main = GetHandle();
+          HWND other = GetDesktopWindow();
+          if (main != nullptr && other != nullptr) {
+            SetForegroundWindow(other);
+          }
+          result->Success();
+        } else if (name == "debugCapture") {
+          // 自测用：抓某个窗口的屏幕像素，返回 {ok, mean, dark}，
+          // 同时在 exe 同目录存一张 PNG 供人眼核对。
+          const std::wstring target = GetString("target");
+          HWND target_hwnd = GetHandle();
+          std::wstring tag = L"main";
+          if (target == L"toast") {
+            target_hwnd = toast_window_;
+            tag = L"toast";
+          } else if (target == L"bubble") {
+            target_hwnd = bubble_window_;
+            tag = L"bubble";
+          }
+          double mean = 0;
+          double dark = 0;
+          std::wstring png;
+          if (target_hwnd != nullptr) {
+            char exe_path[MAX_PATH];
+            GetModuleFileNameA(nullptr, exe_path, MAX_PATH);
+            std::string dir(exe_path);
+            const size_t slash = dir.find_last_of("\\/");
+            if (slash != std::string::npos) dir = dir.substr(0, slash + 1);
+            png = L"wisp_shot_";
+            png += tag;
+            png += L".png";
+            std::wstring full;
+            const int n = MultiByteToWideChar(CP_UTF8, 0, dir.c_str(),
+                                             static_cast<int>(dir.size()),
+                                             nullptr, 0);
+            if (n > 0) {
+              full.resize(static_cast<size_t>(n));
+              MultiByteToWideChar(CP_UTF8, 0, dir.c_str(),
+                                  static_cast<int>(dir.size()), full.data(), n);
+            }
+            full += png;
+            png = full;
+          }
+          const bool ok = CaptureWindowStats(target_hwnd, &mean, &dark, png);
+          flutter::EncodableMap m{
+              {flutter::EncodableValue("ok"), flutter::EncodableValue(ok)},
+              {flutter::EncodableValue("mean"), flutter::EncodableValue(mean)},
+              {flutter::EncodableValue("dark"), flutter::EncodableValue(dark)},
+              {flutter::EncodableValue("png"), flutter::EncodableValue("")},
+          };
+          result->Success(m);
         } else {
           result->NotImplemented();
         }
@@ -1051,6 +1189,10 @@ bool FlutterWindow::OnCreate() {
   CreateTrayIcon();
   EnsureGdiplus();
   LoadBallImage();
+  // 通知卡和气泡的窗口在启动时就建好（保持隐藏）：第一次弹的时候不用现创建，
+  // 少一个"首次创建状态不对"的机会——用户反馈过"第一次不出现、第二次才出现"。
+  CreateToastWindow();
+  CreateBubbleWindow();
 
   // 拖拽发送：主窗口注册为拖放目标，文件/文件夹拖进来就加入待发清单。
   // 子窗口（Flutter 视图）没注册也没关系，Shell 会沿父链找到这个顶层窗口。
@@ -1460,6 +1602,79 @@ int FlutterWindow::OpenUrl(const std::wstring& url) {
 // 通知卡片（替代系统 toast；ask / progress / done 三态）
 // ---------------------------------------------------------------------------
 
+// 抓取窗口客户区在屏幕上的真实像素，统计平均亮度与"接近纯黑"的占比，
+// 并可选存成 PNG 供人眼核对。
+//
+// 用来客观判定"主窗口是不是黑屏"、"通知卡是不是真的画出来了"——
+// IsWindowVisible 只说明窗口显示了，不代表上面有像素。
+// 从屏幕 DC 做 BitBlt（而不是 PrintWindow）：PrintWindow 走的是 WM_PRINT，
+// Direct3D/Impeller 的窗口不会照着画，抓回来可能一片黑，误判。
+bool CaptureWindowStats(HWND hwnd, double* mean_out, double* dark_out,
+                         const std::wstring& png_path) {
+  *mean_out = 0;
+  *dark_out = 0;
+  if (hwnd == nullptr || !IsWindowVisible(hwnd)) return false;
+
+  RECT wr{};
+  if (!GetWindowRect(hwnd, &wr)) return false;
+  const int w = wr.right - wr.left;
+  const int h = wr.bottom - wr.top;
+  if (w <= 0 || h <= 0) return false;
+
+  HDC screen = GetDC(nullptr);
+  if (screen == nullptr) return false;
+  HDC mem = CreateCompatibleDC(screen);
+  HBITMAP bmp = mem != nullptr ? CreateCompatibleBitmap(screen, w, h) : nullptr;
+  if (mem == nullptr || bmp == nullptr) {
+    if (bmp != nullptr) DeleteObject(bmp);
+    if (mem != nullptr) DeleteDC(mem);
+    ReleaseDC(nullptr, screen);
+    return false;
+  }
+  HGDIOBJ old = SelectObject(mem, bmp);
+  BitBlt(mem, 0, 0, w, h, screen, wr.left, wr.top, SRCCOPY);
+
+  BITMAPINFO bi{};
+  bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+  bi.bmiHeader.biWidth = w;
+  bi.bmiHeader.biHeight = -h;  // top-down
+  bi.bmiHeader.biPlanes = 1;
+  bi.bmiHeader.biBitCount = 32;
+  bi.bmiHeader.biCompression = BI_RGB;
+  std::vector<BYTE> pixels(static_cast<size_t>(w) * h * 4, 0);
+  GetDIBits(mem, bmp, 0, h, pixels.data(), &bi, DIB_RGB_COLORS);
+
+  SelectObject(mem, old);
+  DeleteDC(mem);
+  ReleaseDC(nullptr, screen);
+
+  const size_t total = static_cast<size_t>(w) * h;
+  double sum = 0;
+  size_t dark = 0;
+  for (size_t i = 0; i < total; i++) {
+    const double lum = 0.299 * pixels[i * 4 + 0] + 0.587 * pixels[i * 4 + 1] +
+                       0.114 * pixels[i * 4 + 2];
+    sum += lum;
+    if (lum < 12) dark++;
+  }
+  *mean_out = total > 0 ? sum / static_cast<double>(total) : 0;
+  *dark_out = total > 0 ? static_cast<double>(dark) / static_cast<double>(total) : 0;
+
+  // 顺带把抓到的像素存成 PNG，方便人眼确认到底画出来没有。
+  if (!png_path.empty()) {
+    static const CLSID kPngClsid = {
+        0x557cf406, 0x1a04, 0x11d3,
+        {0x9a, 0x73, 0x00, 0x00, 0xf8, 0x1e, 0xf3, 0x6e}};
+    Gdiplus::Bitmap* image = Gdiplus::Bitmap::FromHBITMAP(bmp, nullptr);
+    if (image != nullptr) {
+      image->Save(png_path.c_str(), &kPngClsid, nullptr);
+      delete image;
+    }
+  }
+  DeleteObject(bmp);
+  return true;
+}
+
 void FlutterWindow::ShowToast(const std::wstring& title,
                               const std::wstring& body, int mode,
                               const std::wstring& progress) {
@@ -1477,7 +1692,7 @@ void FlutterWindow::ShowToast(const std::wstring& title,
   toast_mode_ = mode;
   toast_progress_ = progress;
 
-  // 位置：工作区右下角。锚点在这里算一次，动画帧只在这个锚点上做位移。
+  // 位置：工作区右下角。锚点在这里算一次，之后每帧都相对它定位。
   RECT work = BallWorkArea();
   int w = ScaleFor(toast_window_, kCardWidth + kCardMargin * 2);
   int h = ScaleFor(toast_window_, kCardHeight + kCardMargin * 2);
@@ -1490,8 +1705,9 @@ void FlutterWindow::ShowToast(const std::wstring& title,
 
   SetWindowPos(toast_window_, nullptr, toast_anchor_.x, toast_anchor_.y, 0, 0,
                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
-
   ShowWindow(toast_window_, SW_SHOWNOACTIVATE);
+  toast_active_ = true;
+  toast_drawn_ = false;
   WispDbgLog("ShowToast: shown visible=" +
              std::to_string(IsWindowVisible(toast_window_) ? 1 : 0));
   // 存活时间按模式区分：询问 30s（用户要想一想）；进度 8s（每次更新顺延）；
@@ -1499,24 +1715,28 @@ void FlutterWindow::ShowToast(const std::wstring& title,
   KillTimer(toast_window_, kToastTimeoutTimerId);
   toast_timeout_timer_ = SetTimer(toast_window_, kToastTimeoutTimerId,
                                   ToastLifetimeMs(mode), nullptr);
-  // 滑入动画（仅在全新弹出时播放）。
+  // 入场动画：只做淡入，**位置不动**。
   //
-  // 注意时序：这里必须先画在屏幕外（slide_t=0），让动画自己滑进来。
-  // 以前先画终态再从 0 开始播动画——用户会看到"完整卡片闪一下 → 消失 →
-  // 再滑进来"，正是"通知闪一下就没了"观感的来源之一。
+  // 以前是"先画到屏幕外再滑进来"——只要动画帧没跑到（平台线程正忙、
+  // 计时器被清掉），卡片就永远停在屏幕外，而 IsWindowVisible 仍报 true，
+  // 用户看到的就是"第一次不出现、再来一次才出现"。
+  // 改成位置固定、透明度从 0.6 淡到 1.0：动画丢帧最多让卡片淡一点，
+  // 绝不会让它跑到屏幕外去。
   KillTimer(toast_window_, kToastAnimTimerId);
   toast_anim_phase_ = 0;
-  RenderToast(0);
+  RenderToast(kToastFadeStart);
   toast_anim_timer_ = SetTimer(toast_window_, kToastAnimTimerId, 16, nullptr);
 }
 
 void FlutterWindow::UpdateToast(const std::wstring& body, int mode,
                                 const std::wstring& progress) {
-  if (toast_window_ == nullptr || !IsWindowVisible(toast_window_)) return;
+  // 用显式的"活着"标志而不是 IsWindowVisible：后者在窗口刚被隐藏、
+  // 或还没画完第一帧时都不准，会让更新被静默丢掉（进度条不动）。
+  if (!toast_active_) return;
   toast_body_ = body;
   toast_mode_ = mode;
   toast_progress_ = progress;
-  RenderToast(1);
+  RenderToast(1.0f);
   // 有内容更新就顺延存活时间（进度每 200ms 一次，卡片保持到传输结束）。
   KillTimer(toast_window_, kToastTimeoutTimerId);
   toast_timeout_timer_ = SetTimer(toast_window_, kToastTimeoutTimerId,
@@ -1530,6 +1750,8 @@ void FlutterWindow::HideToast() {
   toast_timeout_timer_ = 0;
   KillTimer(toast_window_, kToastAnimTimerId);
   toast_anim_timer_ = 0;
+  toast_active_ = false;
+  toast_drawn_ = false;
   ShowWindow(toast_window_, SW_HIDE);
 }
 
@@ -1651,26 +1873,30 @@ ToastButtons DrawCardContent(Gdiplus::Graphics& g, HWND hwnd, int win_w,
   return buttons;
 }
 
-// slide_t: 0=完全在屏幕外 1=就位。
+// fade: 0..1 的整体不透明度。位置永远是锚点，只有透明度会变。
 //
-// 位置必须相对**固定锚点**算，不能相对"当前窗口矩形"算：以前每帧拿
-// GetWindowRect 再加位移，14 帧滑入动画会把窗口一路推到 x=6300（屏幕才 3840），
-// 于是通知"弹出来了但看不见"。这正是桌面通知不显示的根因。
-void FlutterWindow::RenderToast(float slide_t) {
+// 为什么不能拿位置做动画：以前是"先画到屏幕外再滑进来"，只要动画帧没跑到
+// （平台线程忙、计时器被清掉），卡片就永远停在屏幕外，而 IsWindowVisible
+// 仍报 true——用户看到的就是"第一次不出现、再来一次才出现"。
+// 改成位置固定、只调透明度之后，动画丢帧最多让卡片淡一点，绝不会消失。
+void FlutterWindow::RenderToast(float fade) {
   if (toast_window_ == nullptr) return;
   HWND hwnd = toast_window_;
   int win_w = ScaleFor(hwnd, kCardWidth + kCardMargin * 2);
   int win_h = ScaleFor(hwnd, kCardHeight + kCardMargin * 2);
 
-  int offset = static_cast<int>((1 - slide_t) * (win_w + ScaleFor(hwnd, 8)));
-  POINT dst{toast_anchor_.x + offset, toast_anchor_.y};
+  POINT dst{toast_anchor_.x, toast_anchor_.y};
 
   LayeredCanvas canvas;
   if (!canvas.Begin(hwnd, win_w, win_h)) return;
   g_toast_buttons = DrawCardContent(*canvas.graphics(), hwnd, win_w, win_h,
                                     toast_title_, toast_body_, toast_mode_,
                                     toast_progress_);
-  canvas.Present(hwnd, &dst);
+  if (fade < 1.0f) {
+    canvas.ApplyAlpha(static_cast<BYTE>(255.0f * fade));
+  }
+  // 画成功才算"真的出来了"——Dart 侧据此确认，必要时重发。
+  toast_drawn_ = canvas.Present(hwnd, &dst);
 }
 
 void FlutterWindow::HandleToastClick(POINT pt) {
@@ -1848,6 +2074,8 @@ void FlutterWindow::ShowBubble(const std::wstring& title,
   SetWindowPos(bubble_window_, nullptr, x, y, 0, 0,
                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
   ShowWindow(bubble_window_, SW_SHOWNOACTIVATE);
+  bubble_active_ = true;
+  bubble_drawn_ = false;
   RenderBubble();
 
   KillTimer(bubble_window_, kBubbleTimeoutTimerId);
@@ -1857,7 +2085,8 @@ void FlutterWindow::ShowBubble(const std::wstring& title,
 
 void FlutterWindow::UpdateBubble(const std::wstring& body, int mode,
                                  const std::wstring& progress) {
-  if (bubble_window_ == nullptr || !IsWindowVisible(bubble_window_)) return;
+  // 和 UpdateToast 一样用显式的"活着"标志，别用 IsWindowVisible。
+  if (!bubble_active_) return;
   bubble_body_ = body;
   bubble_mode_ = mode;
   bubble_progress_ = progress;
@@ -1876,6 +2105,8 @@ void FlutterWindow::HideBubble() {
   if (bubble_window_ == nullptr) return;
   KillTimer(bubble_window_, kBubbleTimeoutTimerId);
   bubble_timeout_timer_ = 0;
+  bubble_active_ = false;
+  bubble_drawn_ = false;
   ShowWindow(bubble_window_, SW_HIDE);
 }
 
@@ -1894,7 +2125,8 @@ void FlutterWindow::RenderBubble() {
   g_bubble_buttons = BubbleButtons{};
   g_bubble_buttons.primary = buttons.primary;
   g_bubble_buttons.secondary = buttons.secondary;
-  canvas.Present(hwnd, &bubble_anchor_);
+  // 画成功才算"真的出来了"——Dart 侧据此确认，必要时重试。
+  bubble_drawn_ = canvas.Present(hwnd, &bubble_anchor_);
 }
 
 void FlutterWindow::HandleBubbleClick(POINT pt) {
@@ -1926,6 +2158,51 @@ void FlutterWindow::InvokeDart(const std::string& method, flutter::EncodableMap 
                          std::make_unique<flutter::EncodableValue>(args));
 }
 
+void FlutterWindow::ForceMainWindowRepaint() {
+  HWND handle = GetHandle();
+  if (handle == nullptr) return;
+  // 隐藏置顶的桌面浮层（通知卡/气泡）会让 DWM 把它们原先占的那块区域重新
+  // 合成一遍，而 Flutter(Impeller) 的交换链在那块区域可能还是空帧——
+  // 用户看到的就是"通知出现后再打开主窗口，主窗口变黑"。
+  // 把主窗口重新提到顶层再落回原位，强制整块区域重绘。
+  SetWindowPos(handle, HWND_TOPMOST, 0, 0, 0, 0,
+               SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+  SetWindowPos(handle, HWND_NOTOPMOST, 0, 0, 0, 0,
+               SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+  if (flutter_controller_) {
+    flutter_controller_->ForceRedraw();
+  }
+  RedrawWindow(handle, nullptr, nullptr,
+               RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+}
+
+// Impeller 的交换链重建是异步的：单次 ForceRedraw 常常落在"表面还没就绪"
+// 的空窗里，黑帧就留在屏幕上了（以前的症状：主窗口变黑）。
+// 所以这里不是重绘一次，而是按越来越大的间隔连着重绘若干次，覆盖整个
+// 表面重建过程——这是"一次性根治"而不是"赌一次时机"。
+void FlutterWindow::ScheduleRestoreRedraws() {
+  HWND handle = GetHandle();
+  if (handle == nullptr) return;
+  KillTimer(handle, kRestoreRedrawTimerId);
+  restore_redraw_step_ = 0;
+  restore_redraw_timer_ = SetTimer(handle, kRestoreRedrawTimerId, 60, nullptr);
+}
+
+void FlutterWindow::RunRestoreRedrawStep() {
+  ForceMainWindowRepaint();
+  restore_redraw_step_++;
+  if (restore_redraw_step_ >= kRestoreRedrawSteps) {
+    KillTimer(GetHandle(), kRestoreRedrawTimerId);
+    restore_redraw_timer_ = 0;
+    return;
+  }
+  // 间隔指数增长：60 / 120 / 240 / 480 / 960 ms。
+  const UINT next = 60u << restore_redraw_step_;
+  KillTimer(GetHandle(), kRestoreRedrawTimerId);
+  restore_redraw_timer_ =
+      SetTimer(GetHandle(), kRestoreRedrawTimerId, next, nullptr);
+}
+
 void FlutterWindow::RestoreWindow() {
   HWND handle = GetHandle();
   if (handle == nullptr) {
@@ -1940,16 +2217,9 @@ void FlutterWindow::RestoreWindow() {
   HideToast();
   HideBubble();
   // Impeller 从隐藏态恢复时交换链还停留在黑帧，必须强制重绘。
-  // 但只调一次不够：ShowWindow 之后视图尺寸/表面是异步重建的，紧跟着的那次
-  // ForceRedraw 往往落在"表面还没就绪"的空窗里，于是从托盘/悬浮球回来仍然黑屏。
-  // 这里再补一次延迟重绘（120ms 后表面已就绪），并在 400ms 兜底刷新一次。
-  if (flutter_controller_) {
-    flutter_controller_->ForceRedraw();
-  }
-  RedrawWindow(handle, nullptr, nullptr,
-               RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
-  KillTimer(handle, kRestoreRedrawTimerId);
-  restore_redraw_timer_ = SetTimer(handle, kRestoreRedrawTimerId, 120, nullptr);
+  // 这里不赌单次时机：连着重绘若干次，覆盖表面重建的整个过程。
+  ForceMainWindowRepaint();
+  ScheduleRestoreRedraws();
   InvokeDart("onWindowRestored", flutter::EncodableMap{});
 }
 
@@ -2010,6 +2280,10 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
       SetTrayFlashing(false);
       HideToast();
       HideBubble();
+      // 收起置顶浮层会让 DWM 重合成那块区域，主窗口可能出现黑块，
+      // 紧接着连着重绘几次把黑块刷掉。
+      ForceMainWindowRepaint();
+      ScheduleRestoreRedraws();
       InvokeDart("onWindowRestored", flutter::EncodableMap{});
     }
   }
@@ -2028,11 +2302,7 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     case WM_TIMER:
       // 恢复窗口后的延迟补绘（Impeller 表面重建是异步的）。
       if (wparam == kRestoreRedrawTimerId) {
-        KillTimer(hwnd, kRestoreRedrawTimerId);
-        restore_redraw_timer_ = 0;
-        if (flutter_controller_) flutter_controller_->ForceRedraw();
-        RedrawWindow(hwnd, nullptr, nullptr,
-                     RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+        RunRestoreRedrawStep();
         return 0;
       }
       // 托盘闪烁：右上角品牌色徽章呼吸（帧序列，每帧缓存）。

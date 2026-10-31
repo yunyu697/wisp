@@ -9,10 +9,18 @@ class WispReleaseNotes {
   const WispReleaseNotes._();
 
   /// 当前应用版本（与 pubspec.yaml 的 `version:` 保持一致）。
-  static const String currentVersion = '1.0.17';
+  static const String currentVersion = '1.0.18';
 
   /// 新版本在前，设置页按这个顺序展示。
   static const List<WispReleaseEntry> entries = <WispReleaseEntry>[
+    WispReleaseEntry(version: '1.0.18', changes: <String>[
+      '根治通知「要第二次才会出现」：卡片位置固定，入场动画只调透明度，绝不会再停在屏幕外',
+      '通知发出后由原生层回报「是否真的画出来了」，没画出来自动重发一次',
+      '拿不到窗口状态时照常弹通知，不再静默吞掉第一次的提醒',
+      '传输结束时若提示卡已超时收起，会重新弹一张，不会丢失「对方已取消」这类结局提示',
+      '修复通知出现后再打开主窗口会变黑：收起桌面浮层与恢复窗口后连续强制重绘',
+      '新增端到端自测：通知首次弹出、像素落盘确认、黑屏判定全部纳入回归',
+    ]),
     WispReleaseEntry(version: '1.0.17', changes: <String>[
       '修复「发现新版本」后点击下载链接没反应：改用系统 API 唤起默认浏览器',
       '下载列表按当前平台给出对应产物（Windows 安装包 / macOS 镜像 / Linux 包 / APK）',
