@@ -87,6 +87,26 @@ jobs:
         if: matrix.target == 'linux'
         run: flutter build linux --release
 
+      - name: Prepare Android signing key
+        if: matrix.target == 'android'
+        shell: bash
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KS_KEY_PWD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KS_STORE_PWD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+        run: |
+          # 把 GitHub Secret 里的 base64 密钥库还原成文件，并写出 key.properties。
+          # 每次发版都用这同一把密钥签名，覆盖安装才不会再报"签名不一致"。
+          echo "$KS_B64" | base64 -d > android/upload-keystore.jks
+          cat > android/key.properties <<EOF
+          storePassword=$KS_STORE_PWD
+          keyPassword=$KS_KEY_PWD
+          keyAlias=$KS_ALIAS
+          storeFile=upload-keystore.jks
+          EOF
+          ls -la android/upload-keystore.jks
+
       - name: Build (android)
         if: matrix.target == 'android'
         run: flutter build apk --release

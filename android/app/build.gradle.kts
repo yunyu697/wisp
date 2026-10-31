@@ -4,6 +4,19 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+import java.util.Properties
+import java.io.FileInputStream
+
+// 固定签名密钥：从 android/key.properties 读取（由 CI 从 GitHub Secrets 写入，
+// 或本地放一份）。这样每次发版的 APK 都用同一把密钥签名，覆盖安装才不会报
+// "签名不一致"。CI 里没有 key.properties 时退回 debug 密钥，本地 `flutter run
+// --release` 照常可用。
+val keystorePropertiesFile = rootProject.file("key.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "app.wisp.wisp"
     // flutter_plugin_android_lifecycle 要求 compileSdk >= 36，固定高于 Flutter 默认值。
@@ -30,11 +43,27 @@ android {
         versionName = flutter.versionName
     }
 
+    // 只有存在 key.properties 时才创建"release"签名配置，避免本地无密钥时
+    // 在配置阶段读取 null 直接抛 NPE。
+    if (keystorePropertiesFile.exists()) {
+        signingConfigs {
+            create("release") {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // 有 key.properties 时用固定签名密钥（CI / 正式发布），
+            // 否则退回 debug 密钥（本地无密钥时 flutter run --release 仍可跑）。
+            signingConfig = if (keystorePropertiesFile.exists())
+                signingConfigs.getByName("release")
+            else
+                signingConfigs.getByName("debug")
         }
     }
 }
