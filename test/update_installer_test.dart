@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wisp/services/update_installer.dart';
 import 'package:wisp/services/update_service.dart';
@@ -30,9 +31,13 @@ void main() {
 
       final String directUrl =
           'http://127.0.0.1:${server.port}/wisp-windows-x64-99.0.0-setup.exe';
+      // 用 platformKey 而不是写死 'windows'：CI 跑在 ubuntu 上，
+      // 写死平台键会让这条用例在 Linux 上取不到直链而失败。
       final WispUpdateInfo info = WispUpdateInfo(
         latestVersion: '99.0.0',
-        downloads: <String, String>{'windows': directUrl},
+        downloads: <String, String>{platformKey: directUrl},
+        // 一键更新要求清单带 sha256，这里给真实摘要，顺带验证校验链路。
+        sha256: <String, String>{platformKey: sha256.convert(payload).toString()},
       );
 
       int progressCalls = 0;
@@ -67,12 +72,14 @@ void main() {
     });
 
     test('所有源都失败时抛错并带上原因', () async {
-      // 死端口：官方源 + 三个镜像前缀全部不可达。
-      const WispUpdateInfo info = WispUpdateInfo(
+      // 死端口：连不上就是连不上（127.0.0.1 不匹配 GitHub，也不会去试镜像）。
+      // 给一个摘要，让流程走到真正的下载环节而不是在校验值检查处提前返回。
+      final WispUpdateInfo info = WispUpdateInfo(
         latestVersion: '99.0.0',
         downloads: <String, String>{
-          'windows': 'http://127.0.0.1:1/wisp-should-fail.exe',
+          platformKey: 'http://127.0.0.1:1/wisp-should-fail.exe',
         },
+        sha256: <String, String>{platformKey: '0' * 64},
       );
       await expectLater(
         WispUpdateInstaller.download(info: info),

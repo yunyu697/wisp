@@ -27,9 +27,17 @@ class WispUpdateSource {
   static const String repoOwner = 'yunyu697';
   static const String repoName = 'wisp';
 
-  /// 更新清单地址（官方源）。镜像探测按 [mirrors] 逐个加前缀重试。
-  static const String manifestUrl =
+  /// 发布产物里的清单：由 CI 在发版时生成并附到 Release 上，**带各平台 sha256**。
+  /// `releases/latest/download/<asset>` 永远指向最新一版，不用跟着版本号改。
+  static const String releaseManifestUrl =
+      'https://github.com/$repoOwner/$repoName/releases/latest/download/update.json';
+
+  /// 仓库根目录的清单：手工维护，作为发布产物缺失时的兜底（没有 sha256）。
+  static const String repoManifestUrl =
       'https://raw.githubusercontent.com/$repoOwner/$repoName/main/update.json';
+
+  /// 默认清单地址（官方源）。镜像探测按 [mirrors] 逐个加前缀重试。
+  static const String manifestUrl = releaseManifestUrl;
 
   /// GitHub 加速镜像（前缀代理形式）。失效就删掉，有新的往里加；
   /// 顺序即「检查更新」时的重试顺序，也决定下载列表的排列顺序。
@@ -57,6 +65,7 @@ class WispUpdateInfo {
     this.notes,
     this.downloadUrl,
     this.downloads = const <String, String>{},
+    this.sha256 = const <String, String>{},
   });
 
   factory WispUpdateInfo.fromJson(Map<String, dynamic> json) {
@@ -73,11 +82,24 @@ class WispUpdateInfo {
         }
       });
     }
+    // 各平台安装包的 sha256：{"windows": "...", "macos": "...", ...}
+    // 下载完必须比对，否则一键更新等于「从第三方镜像拿个 exe 就提权运行」。
+    final Map<String, String> hashes = <String, String>{};
+    final Object? rawHashes = json['sha256'];
+    if (rawHashes is Map) {
+      rawHashes.forEach((Object? key, Object? value) {
+        if (key is String && value is String) {
+          final String trimmed = value.trim().toLowerCase();
+          if (trimmed.isNotEmpty) hashes[key] = trimmed;
+        }
+      });
+    }
     return WispUpdateInfo(
       latestVersion: (json['version'] as String?) ?? '',
       notes: notes == null || notes.isEmpty ? null : notes,
       downloadUrl: downloadUrl == null || downloadUrl.isEmpty ? null : downloadUrl,
       downloads: downloads,
+      sha256: hashes,
     );
   }
 
@@ -91,6 +113,17 @@ class WispUpdateInfo {
 
   /// 分平台产物直链：key 为 windows / macos / linux / android。
   final Map<String, String> downloads;
+
+  /// 分平台安装包的 sha256（小写十六进制）。清单没给时为空。
+  final Map<String, String> sha256;
+
+  /// 当前平台安装包的期望摘要；清单没提供时为 null。
+  ///
+  /// 为 null 意味着**无法校验**——自动安装会因此被拒绝，只允许手动下载。
+  String? get expectedSha256 {
+    final String? value = sha256[platformKey];
+    return value == null || value.isEmpty ? null : value;
+  }
 
   /// 当前平台对应的下载直链。没有就退回通用 [downloadUrl]，再退回发布页。
   String get primaryUrl {
@@ -184,9 +217,12 @@ class WispUpdateService {
   }) async {
     final List<String> urls = sources ??
         <String>[
-          WispUpdateSource.manifestUrl,
+          // 先试发布产物（带 sha256），再试仓库根目录（手工维护的兜底），
+          // 最后按镜像顺序重试发布产物——镜像只代理发布地址，不代理 raw。
+          WispUpdateSource.releaseManifestUrl,
+          WispUpdateSource.repoManifestUrl,
           for (final String prefix in WispUpdateSource.mirrors)
-            '$prefix${WispUpdateSource.manifestUrl}',
+            '$prefix${WispUpdateSource.releaseManifestUrl}',
         ];
     for (final String url in urls) {
       try {

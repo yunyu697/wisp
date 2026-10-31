@@ -8,6 +8,7 @@ import '../core/constants.dart';
 import '../models/device.dart';
 import '../models/network.dart';
 import 'settings_service.dart';
+import 'tls_service.dart';
 
 /// 局域网发现。
 ///
@@ -379,6 +380,10 @@ class DiscoveryService {
           final String body = await response.transform(utf8.decoder).join();
           final Map<String, dynamic>? payload = _decode(body);
           if (payload == null) return;
+          if (!_certMatchesClaim(response, payload)) {
+            onError('$ip 出示的证书与它声明的指纹不一致，已忽略');
+            return;
+          }
           final WispDevice device = WispDevice.fromJson(payload, ip: ip);
           if (device.fingerprint == settings.fingerprint) return;
           _remember(device);
@@ -388,6 +393,20 @@ class DiscoveryService {
         }
       }
     }
+  }
+
+  /// 对端出示的证书必须与它自己声明的指纹一致。
+  ///
+  /// 自签证书没有 CA 可验，能做的第一步就是这个：想冒充别人，光换一张
+  /// 证书不够，报文里的 `fingerprint` 也得跟着换，而那个字段正是我们
+  /// 回连时用来校验的。返回 true 也包括「对端没报指纹 / 走明文」这种
+  /// 无法判定的情况——那是协议兼容的代价，不在这里拦。
+  bool _certMatchesClaim(HttpClientResponse response, Map<String, dynamic> payload) {
+    final bool? ok = WispTls.certMatchesClaim(
+      response.certificate,
+      payload['fingerprint'] as String?,
+    );
+    return ok ?? true;
   }
 
   /// 扫描要探的端口列表：当前端口优先，再补默认端口（去重）。
@@ -424,6 +443,10 @@ class DiscoveryService {
       final String body = await response.transform(utf8.decoder).join();
       final Map<String, dynamic>? payload = _decode(body);
       if (payload == null) return null;
+      if (!_certMatchesClaim(response, payload)) {
+        onError('$ip 出示的证书与它声明的指纹不一致，已忽略');
+        return null;
+      }
       return WispDevice.fromJson(payload, ip: ip);
     } catch (_) {
       return null;

@@ -76,4 +76,37 @@ class WispTls {
       return null;
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // 对端证书校验
+  //
+  // 自签证书没法靠 CA 链验证，只能"证书哈希 == 对端在报文里声明的指纹"。
+  // 这就是 LocalSend 的做法：`fingerprint` 是设备信息的一部分，两端各自算
+  // 自己证书的 SHA-256，收到请求时互相比对。
+  //
+  // 不校验会怎样：同网段的任何人出示任意证书都能握手成功，等于把加密降级成
+  // "防君子不防小人"——中间人换个证书就能读到全部文件名与内容。
+  // ---------------------------------------------------------------------------
+
+  /// 任意证书的紧凑指纹：64 位小写十六进制，与协议里的 `fingerprint` 同格式。
+  static String compactFingerprint(X509Certificate cert) =>
+      sha256.convert(cert.der).toString().toLowerCase();
+
+  /// 把协议里的指纹归一化：去掉冒号与空白、转小写。
+  ///
+  /// 官方客户端发的是 64 位小写十六进制；本机设置页展示的是带冒号的大写
+  /// （对齐 `openssl x509 -fingerprint -sha256` 的输出），两边都得能比。
+  static String normalizeFingerprint(String raw) =>
+      raw.replaceAll(RegExp(r'[:\s]'), '').toLowerCase();
+
+  /// 证书是否与对端声明的 [claimed] 指纹一致。
+  ///
+  /// 返回 null 表示**无法判定**（对端没上报指纹，或走的是明文 HTTP）——
+  /// 调用方自己决定是放行还是拒绝，别把"不知道"当成"通过"。
+  static bool? certMatchesClaim(X509Certificate? cert, String? claimed) {
+    if (cert == null) return null;
+    final String expected = normalizeFingerprint(claimed ?? '');
+    if (expected.isEmpty) return null;
+    return compactFingerprint(cert) == expected;
+  }
 }

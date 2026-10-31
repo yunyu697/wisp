@@ -71,7 +71,15 @@ void main() {
     });
 
     testWidgets('golden: 发现新版本', (WidgetTester tester) async {
-      await pump(tester, newerStub);
+      // 固定版本号：跟着 currentVersion 走的话，每发一版这张基准图都要重画。
+      await pump(
+        tester,
+        () async => const WispUpdateInfo(
+          latestVersion: '9.9.9',
+          notes: '拖拽更顺滑，修复若干问题',
+          downloadUrl: 'https://example.com/wisp-9.9.9.zip',
+        ),
+      );
       await expectLater(
         find.byType(UpdateSheet),
         matchesGoldenFile('goldens/16-update-sheet.png'),

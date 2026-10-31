@@ -338,13 +338,17 @@ class _UpdateSheetState extends State<UpdateSheet> {
 
   /// 官方源 + 镜像逐个重试地下载；进度实时刷进 [_progress]。
   /// 失败时把 [_phase] 置为 failed 并返回 null。
-  Future<String?> _runDownload() async {
+  ///
+  /// [verified] 为 true 时要求清单提供 sha256 并逐字节比对（一键更新必须走这条）；
+  /// 「仅下载」放宽到"有校验值就比、没有就下"，用户自己决定装不装。
+  Future<String?> _runDownload({required bool verified}) async {
     setState(() {
       _phase = _Phase.downloading;
       _progress = null;
     });
     try {
       final String path = await WispUpdateInstaller.download(
+        requireVerified: verified,
         onProgress: (int received, int total) {
           if (!mounted) return;
           setState(() {
@@ -365,7 +369,7 @@ class _UpdateSheetState extends State<UpdateSheet> {
 
   /// 一键更新：下载 + 自动安装。
   Future<void> _autoUpdate() async {
-    final String? path = await _runDownload();
+    final String? path = await _runDownload(verified: true);
     if (path == null || !mounted) return;
     setState(() => _phase = _Phase.installing);
     try {
@@ -386,7 +390,7 @@ class _UpdateSheetState extends State<UpdateSheet> {
 
   /// 仅下载：下完提示装在哪、怎么装。
   Future<void> _downloadOnly() async {
-    final String? path = await _runDownload();
+    final String? path = await _runDownload(verified: false);
     if (path == null || !mounted) return;
     final String hint = WispUpdateInstaller.supportsAutoInstall
         ? '安装包已下载：$path。打开它即可安装。'

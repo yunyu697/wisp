@@ -5,6 +5,7 @@ import 'dart:io';
 import '../core/constants.dart';
 import '../models/device.dart';
 import '../models/transfer.dart';
+import 'tls_service.dart';
 
 class SendFailure implements Exception {
   SendFailure(this.message, {this.statusCode});
@@ -40,11 +41,25 @@ class SenderService {
   final int port;
   final bool secure;
 
-  HttpClient _client({Duration timeout = const Duration(seconds: 12)}) => HttpClient()
-    ..connectionTimeout = timeout
-    ..idleTimeout = const Duration(seconds: 15)
-    // 局域网内是自签证书，靠指纹识别对端；这里放行证书链但只连私网地址。
-    ..badCertificateCallback = (X509Certificate cert, String host, int port) => true;
+  /// 连对端用的 HttpClient。
+  ///
+  /// 局域网里是自签证书，靠**指纹**认人：证书的 SHA-256 必须等于对端在
+  /// 报文里声明的 `fingerprint`。以前这里无条件返回 true，等于任何证书都收
+  /// ——同网段换一张证书就能中间人劫持。
+  ///
+  /// [peer] 没带指纹（老版本客户端 / 明文 HTTP）时只能放行，这是协议兼容的
+  /// 代价；但只要对端报了指纹，就一定比对。
+  HttpClient _client({
+    Duration timeout = const Duration(seconds: 12),
+    WispDevice? peer,
+  }) =>
+      HttpClient()
+        ..connectionTimeout = timeout
+        ..idleTimeout = const Duration(seconds: 15)
+        ..badCertificateCallback = (X509Certificate cert, String host, int port) {
+          final bool? matches = WispTls.certMatchesClaim(cert, peer?.fingerprint);
+          return matches ?? true;
+        };
 
   Map<String, dynamic> get _selfInfo => <String, dynamic>{
         'alias': alias,
@@ -59,7 +74,7 @@ class SenderService {
 
   /// 第一步：只发元数据，换回 sessionId 与每个文件的 token。
   Future<void> prepare(TransferSession session, WispDevice device, {String? pin}) async {
-    final HttpClient client = _client();
+    final HttpClient client = _client(peer: device);
     try {
       final Map<String, String> query = <String, String>{
         if (pin != null && pin.isNotEmpty) 'pin': pin,
@@ -98,6 +113,9 @@ class SenderService {
       // 会话号以对端签发的为准，上传/取消都带上它。
       session.remoteSessionId = sessionId;
       session.status = TransferStatus.active;
+    } on TlsException {
+      // 指纹对不上时 dart:io 抛的就是这个：别让用户只看到一句 Handshake failed。
+      throw SendFailure('对端证书与它声明的指纹不一致，已中止连接（可能有人劫持）');
     } finally {
       client.close(force: false);
     }
@@ -110,7 +128,7 @@ class SenderService {
     void Function()? onProgress,
     bool Function()? isCanceled,
   }) async {
-    final HttpClient client = _client(timeout: const Duration(seconds: 30));
+    final HttpClient client = _client(timeout: const Duration(seconds: 30), peer: device);
     try {
       final List<TransferFile> queue = session.files
           .where((TransferFile f) => f.file != null && f.sent < f.size)
@@ -129,6 +147,9 @@ class SenderService {
       if (!(isCanceled?.call() ?? false)) {
         session.status = TransferStatus.completed;
       }
+    } on TlsException {
+      // 指纹对不上时 dart:io 抛的就是这个：别让用户只看到一句 Handshake failed。
+      throw SendFailure('对端证书与它声明的指纹不一致，已中止连接（可能有人劫持）');
     } finally {
       client.close(force: false);
     }
@@ -172,7 +193,7 @@ class SenderService {
 
   /// 取消：告知对端释放会话，避免它一直等。
   Future<void> cancel(TransferSession session, WispDevice device) async {
-    final HttpClient client = _client(timeout: const Duration(seconds: 5));
+    final HttpClient client = _client(timeout: const Duration(seconds: 5), peer: device);
     try {
       final Uri uri = Uri.parse('${device.baseUrl}${WispProtocol.cancelPath}')
           .replace(queryParameters: <String, String>{

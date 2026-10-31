@@ -1,6 +1,6 @@
 {
   "version": "1.0.20",
-  "notes": "安全修复：接收端文件名可被对端用来把文件写到下载目录之外（如开机启动目录），现已限制为纯文件名并强制校验落点；修复多文件并发上传时接收历史重复记录。",
+  "notes": "安全修复：接收端文件名可被对端用来把文件写到下载目录之外（如开机启动目录），现已限制为纯文件名并强制校验落点；加密传输现在会校验证书指纹，对不上直接断开；一键更新下载后校验 sha256，无校验值不自动安装。",
   "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v1.0.20/wisp-windows-x64-1.0.20-setup.exe",
   "downloads": {
     "windows": "https://github.com/yunyu697/wisp/releases/download/v1.0.20/wisp-windows-x64-1.0.20-setup.exe",

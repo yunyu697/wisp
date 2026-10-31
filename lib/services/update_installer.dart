@@ -16,6 +16,8 @@ library;
 import 'dart:async';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
+
 import 'desktop_service.dart';
 import 'update_service.dart';
 
@@ -48,9 +50,13 @@ class WispUpdateInstaller {
   /// 官方源失败自动换镜像逐个重试（与清单检查同一套源顺序）。
   /// [info] 供测试注入已拿到的清单；null 时现场查一次。
   /// [onProgress] 参数为（已收字节, 总字节），总长未知时为 0。
+  /// [requireVerified] 为 true 时（一键更新），清单必须给出本平台的 sha256，
+  /// 且下载结果必须逐字节对得上；否则拒绝安装。为 false 时（仅下载）允许
+  /// 没有校验值，但仍然会在有校验值时比对。
   static Future<String> download({
     void Function(int received, int total)? onProgress,
     WispUpdateInfo? info,
+    bool requireVerified = true,
   }) async {
     final WispUpdateInfo? manifest = info ?? await WispUpdateService.check();
     final String primary = manifest?.primaryUrl ?? WispUpdateSource.releasePageUrl;
@@ -58,19 +64,49 @@ class WispUpdateInstaller {
       // 清单里没有本平台直链：别瞎猜，让用户去发布页挑。
       throw StateError('清单里没有本平台（$platformKey）的下载直链');
     }
+    final String? expected = manifest?.expectedSha256;
+    if (requireVerified && expected == null) {
+      // 清单被换掉、或只拿到仓库里那份手写清单（没有 sha256）时会走到这里。
+      // 没有摘要就不自动装——否则等于"从第三方镜像下个 exe 就提权运行"。
+      throw StateError('更新清单没有提供校验值，已取消自动安装；请改用「仅下载」后手动安装');
+    }
+    // 镜像只代理 GitHub 地址；本地/自建源拼上前缀毫无意义，还会白等超时。
+    final bool mirrorable = primary.contains('github.com/');
     final List<String> urls = <String>[
       primary,
-      for (final String prefix in WispUpdateSource.mirrors) '$prefix$primary',
+      if (mirrorable)
+        for (final String prefix in WispUpdateSource.mirrors) '$prefix$primary',
     ];
     Object? lastError;
+    bool tampered = false;
     for (final String url in urls) {
       try {
-        return await _downloadOne(url, onProgress);
+        final String path = await _downloadOne(url, onProgress);
+        if (expected == null) return path;
+        final String actual = await sha256OfFile(path);
+        if (actual == expected) return path;
+        // 校验不过就删掉再换源：坏包不能留在磁盘上被用户手动点开。
+        try {
+          await File(path).delete();
+        } catch (_) {
+          // 删不掉（被杀软占用之类）也要继续换源。
+        }
+        tampered = true;
+        lastError = StateError('安装包校验失败（来源 $url），已丢弃');
       } catch (e) {
         lastError = e; // 换下一个源。
       }
     }
+    // 校验失败是安全事件，不能被后续镜像的网络错误盖掉——用户要知道
+    // "下到的包是错的"，而不是"网不好"。
+    if (tampered) throw lastError!;
     throw StateError('所有下载源都失败了：$lastError');
+  }
+
+  /// 文件的 sha256（小写十六进制），流式计算，不把整个安装包读进内存。
+  static Future<String> sha256OfFile(String path) async {
+    final Digest digest = await sha256.bind(File(path).openRead()).first;
+    return digest.toString();
   }
 
   static Future<String> _downloadOne(

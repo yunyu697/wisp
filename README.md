@@ -49,14 +49,18 @@ Wisp 是一个局域网文件互传工具，用 Flutter 重写 LocalSend 的体�
 `lib/core/release_notes.dart`——发新版本时加一条 `WispReleaseEntry`、把
 `currentVersion` 和 pubspec 的 `version:` 同步改掉即可，弹层高亮和版本行显示都会跟着走。
 
-设置 → 关于 → **检查更新**：从发布仓库读 `update.json` 清单（版本号 / 更新说明 /
-安装包直链），与当前版本比对；官方源连不上时自动换加速镜像重试。清单格式与
-仓库地址见 `lib/services/update_service.dart` 顶部注释（`WispUpdateSource.repoOwner` /
-`repoName` 两行指到真实仓库即可启用）。无论检查成败，弹层都列出
-**官方源 + 全部加速镜像**的下载入口——镜像采用「前缀代理」形式
-（`https://ghfast.top/https://github.com/...`），由用户自己挑，不做自动切换
-（自动改写下载源有供应链风险）。镜像失效就更新
-`WispUpdateSource.mirrors` 列表。
+设置 → 关于 → **检查更新**：优先读 Release 附件里的 `update.json`
+（`releases/latest/download/update.json`，由 CI 在发版时生成，**带四个平台的 sha256**），
+读不到再退回仓库根目录那份手工清单，官方源连不上时自动换加速镜像重试。
+清单格式与仓库地址见 `lib/services/update_service.dart` 顶部注释
+（`WispUpdateSource.repoOwner` / `repoName` 两行指到真实仓库即可启用）。
+
+**一键更新必须校验**：清单给出本平台 sha256 时，下载完逐字节比对；不符就删包、
+换下一个源，并明确提示"校验失败"（不会被后续镜像的网络错误盖掉）。清单没有校验值时
+拒绝自动安装，只保留「仅下载」——否则等于"从第三方镜像下个 exe 就提权运行"。
+无论检查成败，弹层都列出 **官方源 + 全部加速镜像** 的下载入口（前缀代理形式
+`https://ghfast.top/https://github.com/...`），由用户自己挑，不做自动切换
+（自动改写下载源有供应链风险）。镜像失效就更新 `WispUpdateSource.mirrors` 列表。
 
 设置 → 关于 → **自动检查更新**：频率可选 每次启动 / 每天 / 每周 / 关闭（默认每天）。
 到点后台静默比对一次，发现新版本只弹一条提示并存进 `pendingUpdate`，
@@ -249,7 +253,7 @@ bash tools/gen_cert.sh                   # 换发自签证书（内置了一张 
 
 ```bash
 flutter analyze                # 静态分析
-flutter test                   # 冒烟 + 界面 golden（含横屏）+ 底栏/设置/网络/报文/通知分流/历史操作/TLS 端到端/更新日志/检查更新/自动检查频率专项，共 86 项
+flutter test                   # 冒烟 + 界面 golden（含横屏）+ 底栏/设置/网络/报文/通知分流/历史操作/TLS 端到端/更新日志/检查更新/自动检查频率专项，共 140 项
 flutter test --update-goldens  # 改了界面后重画基准图
 flutter build windows --release  # 桌面端正式版
 ```
@@ -365,9 +369,16 @@ wisp.exe --wisp-send=192.168.0.168:53317 --wisp-file=C://a.zip --wisp-https
 1. **证书**：1.0.11 起内置一张 10 年期自签证书（`assets/certs/`，所有安装共用同一张，
    `tools/gen_cert.sh` 可换发），「加密传输」默认真正走 TLS；证书缺失或私钥异常时自动
    退回 HTTP，设置页如实标注，不假装安全。
-2. **指纹信任**：局域网直连无法走 CA 链，信任模型是"指纹 + 同一网段"，与 LocalSend 一致。
+2. **指纹信任**：局域网直连无法走 CA 链。1.0.20 起每次握手都要求"证书的 SHA-256
+   等于对端在报文里声明的 `fingerprint`"，发送端、接收端、网段扫描、手动连接四处都校验，
+   对不上直接拒绝（以前是任何证书都放行）。**仍未做**的是首次连接固定（TOFU）：
+   能伪造组播 announce 的攻击者可以把指纹一起换掉，这类情况只能靠接收方人工确认兜底
+   ——所以别在不可信网络上开自动接收。
 3. **并发**：上传固定两路并发。更多并发在机械硬盘和弱网下反而掉速，实测两路最稳。
 4. **历史**：只存本机、只存 120 条、可一键清空，不做云端同步。
+5. **更新包完整性**：清单里的 sha256 由 CI 发版时计算，一键更新前逐字节比对。
+   这不是签名——防的是"下载损坏"和"第三方代理投毒"，不防"清单本身被换掉"。
+   彻底解决要给安装包做代码签名（Windows Authenticode / macOS 公证），目前未做。
 
 ---
 

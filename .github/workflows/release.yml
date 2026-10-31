@@ -256,11 +256,23 @@ jobs:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
+      # 需要仓库里的 update.json 取 notes（版本号与地址由脚本重写）。
+      - uses: actions/checkout@v4
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+
+      # 客户端的一键更新要求清单里带 sha256，且下载后逐字节比对。
+      # 摘要只能构建完再算，所以清单在这里生成并随 Release 一起发布；
+      # 缺任何一个产物都会让这一步失败，宁可不发也不发"没有校验值"的清单。
+      - name: Generate update.json with checksums
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          python3 tools/gen_update_manifest.py --version "$VERSION" --dist dist
+          cat dist/update.json
 
       - name: Create release
         uses: softprops/action-gh-release@v2

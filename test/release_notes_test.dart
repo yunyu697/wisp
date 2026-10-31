@@ -122,6 +122,9 @@ void main() {
         300,
         scrollable: find.byType(Scrollable).first,
       );
+      // scrollUntilVisible 按固定步长走，内容高度一变就可能少走/多走一步，
+      // 背景差出几百像素——基准图会莫名其妙红。截图前先滚到底，位置确定。
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -4000));
       await tester.pumpAndSettle();
       await tester.tap(find.text('更新日志'));
       await tester.pumpAndSettle();

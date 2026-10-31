@@ -212,6 +212,17 @@ class ReceiverService {
 
     final WispDevice sender = WispDevice.fromJson(info, ip: remoteIp);
 
+    // 证书必须与对方在报文里声明的指纹一致。自签证书没有 CA 可验，
+    // 这是唯一能确认「对面就是它自称的那台设备」的手段；不比对的话，
+    // 任何一张证书都能握手成功，加密等于只防了旁观者。
+    final bool? certOk =
+        WispTls.certMatchesClaim(request.certificate, info['fingerprint'] as String?);
+    if (certOk == false) {
+      onLog('拒绝 $remoteIp 的请求：证书与它声明的指纹不一致');
+      await _json(request, 403, <String, dynamic>{'message': 'certificate mismatch'});
+      return;
+    }
+
     // PIN 校验：协议里 PIN 走 query，缺失或错误都回 401。
     if (settings.pinEnabled && settings.pin.isNotEmpty) {
       final String? pin = request.uri.queryParameters['pin'];

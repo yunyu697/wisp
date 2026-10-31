@@ -1100,12 +1100,19 @@ class AppState extends ChangeNotifier {
         final HttpClientResponse response = await request.close();
         if (response.statusCode != 200) continue;
         final String body = await response.transform(utf8.decoder).join();
+        final X509Certificate? cert = response.certificate;
         client.close(force: true);
         if (body.isEmpty) continue;
         final Object? decoded = jsonDecode(body);
         final Map<String, dynamic> payload = decoded is Map<String, dynamic>
             ? <String, dynamic>{...decoded, 'protocol': scheme}
             : <String, dynamic>{'alias': target, 'protocol': scheme};
+        // 手动连接同样要比对证书与声明指纹：这条路径是"组播被墙时的最后手段"，
+        // 也最容易被诱导连到一台假设备上。
+        if (WispTls.certMatchesClaim(cert, payload['fingerprint'] as String?) == false) {
+          _log('$target 出示的证书与它声明的指纹不一致，已忽略');
+          continue;
+        }
         _upsertDevice(WispDevice.fromJson(payload, ip: target));
         return null;
       } catch (_) {
