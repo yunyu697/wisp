@@ -3,10 +3,17 @@ import 'package:flutter/material.dart';
 import '../../core/release_notes.dart';
 import '../../core/utils/external.dart';
 import '../../core/design/app_colors.dart';
+import '../../services/update_installer.dart';
 import '../../services/update_service.dart';
 
 /// 「检查更新」弹层：打开即发起检查，无论成败都列出下载入口
 /// （官方源 + 加速镜像），检查失败也能手动取最新版。
+///
+/// 发现新版本时提供三个动作：
+/// · 一键更新 —— 下载安装包并自动完成安装（Windows 静默装完自动起新版；
+///   macOS 挂载 dmg 拷进 /Applications）；
+/// · 仅下载 —— 只把安装包下到本地，完成后提示安装方式；
+/// · 打开下载页 —— 跳 GitHub Release 页面自己挑。
 ///
 /// [checkOverride] 供测试注入：null 走真实网络检查。
 /// [onChecked] 在一次检查结束后回调（无论成败），
@@ -21,8 +28,14 @@ class UpdateSheet extends StatefulWidget {
   State<UpdateSheet> createState() => _UpdateSheetState();
 }
 
+enum _Phase { idle, downloading, installing, done, failed }
+
 class _UpdateSheetState extends State<UpdateSheet> {
   late Future<WispUpdateInfo?> _future;
+
+  _Phase _phase = _Phase.idle;
+  double? _progress; // null = 总长未知，进度条转圈
+  String _resultText = '';
 
   @override
   void initState() {
@@ -44,7 +57,7 @@ class _UpdateSheetState extends State<UpdateSheet> {
   Widget build(BuildContext context) {
     return SafeArea(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxHeight: 560),
+        constraints: const BoxConstraints(maxHeight: 620),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -71,10 +84,18 @@ class _UpdateSheetState extends State<UpdateSheet> {
                   builder: (BuildContext context,
                       AsyncSnapshot<WispUpdateInfo?> snapshot) {
                     final Widget status = _statusBlock(context, snapshot);
+                    final WispUpdateInfo? info = snapshot.data;
+                    final bool newer = info != null &&
+                        WispUpdateService.isNewer(
+                            info.latestVersion, WispReleaseNotes.currentVersion);
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
                         status,
+                        if (newer) ...<Widget>[
+                          const SizedBox(height: 6),
+                          _actionArea(context),
+                        ],
                         const SizedBox(height: 6),
                         ..._downloadSection(context, snapshot.data),
                       ],
@@ -185,6 +206,218 @@ class _UpdateSheetState extends State<UpdateSheet> {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // 三按钮动作区：一键更新 / 仅下载 / 打开下载页
+  // ---------------------------------------------------------------------------
+
+  Widget _actionArea(BuildContext context) {
+    switch (_phase) {
+      case _Phase.downloading:
+        return _progressBlock(
+          context,
+          determinate: _progress,
+          label: _progress == null
+              ? '正在下载安装包…'
+              : '正在下载安装包… ${(_progress! * 100).toStringAsFixed(0)}%',
+        );
+      case _Phase.installing:
+        return const Padding(
+          padding: EdgeInsets.symmetric(vertical: 14),
+          child: Row(
+            children: <Widget>[
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2.2),
+              ),
+              SizedBox(width: 10),
+              Text('下载完成，正在安装…'),
+            ],
+          ),
+        );
+      case _Phase.done:
+      case _Phase.failed:
+        final bool failed = _phase == _Phase.failed;
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Icon(
+                    failed ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded,
+                    size: 18,
+                    color: failed ? WispColors.warning : WispColors.success,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _resultText,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => setState(() => _phase = _Phase.idle),
+                    child: Text(failed ? '重试' : '关闭提示'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      case _Phase.idle:
+        final bool auto = WispUpdateInstaller.supportsAutoInstall;
+        return Padding(
+          padding: const EdgeInsets.only(top: 2, bottom: 4),
+          child: Row(
+            children: <Widget>[
+              if (auto) ...<Widget>[
+                // 不给按钮配图标：三等分的宽度里 icon 会把文字挤成省略号。
+                Expanded(
+                  child: FilledButton(
+                    onPressed: _autoUpdate,
+                    child: const Text('一键更新', overflow: TextOverflow.ellipsis),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _downloadOnly,
+                  child: const Text('仅下载', overflow: TextOverflow.ellipsis),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextButton(
+                  onPressed: _openReleasePage,
+                  child: const Text('打开下载页', overflow: TextOverflow.ellipsis),
+                ),
+              ),
+            ],
+          ),
+        );
+    }
+  }
+
+  Widget _progressBlock(BuildContext context,
+      {required double? determinate, required String label}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: Text(label, style: Theme.of(context).textTheme.bodyMedium)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (determinate != null)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: determinate.clamp(0.0, 1.0),
+                minHeight: 6,
+              ),
+            )
+          else
+            const LinearProgressIndicator(minHeight: 6),
+        ],
+      ),
+    );
+  }
+
+  /// 官方源 + 镜像逐个重试地下载；进度实时刷进 [_progress]。
+  /// 失败时把 [_phase] 置为 failed 并返回 null。
+  Future<String?> _runDownload() async {
+    setState(() {
+      _phase = _Phase.downloading;
+      _progress = null;
+    });
+    try {
+      final String path = await WispUpdateInstaller.download(
+        onProgress: (int received, int total) {
+          if (!mounted) return;
+          setState(() {
+            _progress = total > 0 ? received / total : null;
+          });
+        },
+      );
+      return path;
+    } catch (e) {
+      if (!mounted) return null;
+      setState(() {
+        _phase = _Phase.failed;
+        _resultText = '下载失败：$e';
+      });
+      return null;
+    }
+  }
+
+  /// 一键更新：下载 + 自动安装。
+  Future<void> _autoUpdate() async {
+    final String? path = await _runDownload();
+    if (path == null || !mounted) return;
+    setState(() => _phase = _Phase.installing);
+    try {
+      final UpdateInstallOutcome outcome = await WispUpdateInstaller.install(path);
+      if (!mounted) return;
+      setState(() {
+        _phase = outcome.ok ? _Phase.done : _Phase.failed;
+        _resultText = outcome.message;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _phase = _Phase.failed;
+        _resultText = '安装失败：$e';
+      });
+    }
+  }
+
+  /// 仅下载：下完提示装在哪、怎么装。
+  Future<void> _downloadOnly() async {
+    final String? path = await _runDownload();
+    if (path == null || !mounted) return;
+    final String hint = WispUpdateInstaller.supportsAutoInstall
+        ? '安装包已下载：$path。打开它即可安装。'
+        : '安装包已下载：$path，请手动安装。';
+    setState(() {
+      _phase = _Phase.done;
+      _resultText = hint;
+    });
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(hint, maxLines: 3, overflow: TextOverflow.ellipsis),
+        duration: const Duration(seconds: 8),
+      ));
+  }
+
+  /// 打开下载页：Release 页面里各平台产物自己挑。
+  Future<void> _openReleasePage() async {
+    final ExternalOpenResult result =
+        await openExternal(WispUpdateSource.releasePageUrl);
+    if (!mounted) return;
+    if (!result.opened) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text(result.message ?? '没能打开下载页面'),
+          duration: const Duration(seconds: 6),
+        ));
+    }
+  }
+
   /// 下载入口列表：官方源 + 加速镜像，与检查结果无关恒常显示。
   List<Widget> _downloadSection(BuildContext context, WispUpdateInfo? info) {
     final List<(String, String)> entries =
@@ -195,7 +428,7 @@ class _UpdateSheetState extends State<UpdateSheet> {
         child: Row(
           children: <Widget>[
             Text(
-              '下载最新版',
+              '手动下载',
               style: Theme.of(context).textTheme.labelLarge,
             ),
             if (info != null) ...<Widget>[
@@ -248,7 +481,7 @@ class _UpdateSheetState extends State<UpdateSheet> {
       Padding(
         padding: const EdgeInsets.only(top: 4),
         child: Text(
-          '镜像站为第三方加速服务，只代理下载地址；安装前请核对发布说明。',
+          '镜像站为第三方加速服务，只代理下载地址；一键更新始终走官方源，失败时自动换镜像重试。',
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ),

@@ -70,6 +70,26 @@ class DesktopService {
     }
   }
 
+  /// 启动一个本地安装程序（自动更新用）。
+  ///
+  /// Windows 必须走原生 ShellExecuteW（runas）：安装器要求管理员权限，
+  /// CreateProcess 直接启动带 admin 清单的 exe 会报 ERROR_ELEVATION_REQUIRED，
+  /// 而这是唯一会正常弹 UAC 的路径。
+  /// 原生侧只放行 .exe，防止这个口子被用来开任意文件。
+  static Future<bool> runInstaller(String path, {List<String> args = const <String>[]}) async {
+    try {
+      final bool? ok = await _channel.invokeMethod<bool>('runInstaller', <String, dynamic>{
+        'path': path,
+        'args': args.join(' '),
+      });
+      return ok ?? false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
   /// 当前平台是否支持托盘/悬浮球等桌面能力。
   static Future<bool> isSupported() async {
     try {

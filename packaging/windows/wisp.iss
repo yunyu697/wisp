@@ -27,6 +27,10 @@ WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64compatible
 ; The app installs into Program Files; per-user install would not need admin.
 PrivilegesRequired=admin
+; In-app "auto update" runs this installer with /SILENT: silently force-close
+; the running Wisp (a busy file would otherwise abort a silent install),
+; then relaunch the new build afterwards (see [Run] without skipifsilent).
+CloseApplications=force
 UninstallDisplayIcon={app}\wisp.exe
 
 [Languages]
@@ -45,4 +49,6 @@ Name: "{group}\{#AppName}"; Filename: "{app}\wisp.exe"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\wisp.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\wisp.exe"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+; No skipifsilent: after an in-app silent update finishes, the new build
+; starts itself -- the user should not have to hunt for the shortcut again.
+Filename: "{app}\wisp.exe"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall

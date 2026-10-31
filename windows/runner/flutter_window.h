@@ -142,6 +142,10 @@ class FlutterWindow : public Win32Window {
   // 用户点了「下载最新版」没反应。返回 ShellExecute 的错误码（>32 表示成功）。
   int OpenUrl(const std::wstring& url);
 
+  // --- 启动安装程序（自动更新） ---
+  // 动词用 "runas" 才会弹 UAC（安装器要管理员权限）；只放行 .exe 路径。
+  bool RunInstaller(const std::wstring& path, const std::wstring& args);
+
   // --- floating ball ---
   void SetFloatingBall(bool enabled, int hover_delay_ms);
   void ShowBallAlert();

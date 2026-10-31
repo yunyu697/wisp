@@ -2,8 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- 与 Release.entitlements 保持一致（沙盒关掉），只多出 debug 必需的 JIT。
+	     之前 Debug 开着沙盒 + network.server，Release 只开了沙盒——
+	     这就是"开发时一切正常、发布版 Operation not permitted"能一直藏着的原因。
+	     两份 entitlements 语义必须对齐，让 debug 尽量贴近 release。 -->
 	<key>com.apple.security.app-sandbox</key>
-	<true/>
+	<false/>
 	<key>com.apple.security.cs.allow-jit</key>
 	<true/>
 	<key>com.apple.security.network.server</key>

@@ -22,6 +22,11 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<!-- macOS 14+/15 起访问本地网络要用户授权，没有这个声明连"询问"都不会弹，
+	     UDP 广播/组播和连局域网设备会直接被系统拒绝。
+	     文案要说清楚用途，不然用户在系统设置里看到一串不明权限会拒绝。 -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Wisp 需要访问本地网络来发现附近的设备并互传文件。不开启将无法发现其他设备，也无法接收发送请求。</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>$(PRODUCT_COPYRIGHT)</string>
 	<key>NSMainNibFile</key>

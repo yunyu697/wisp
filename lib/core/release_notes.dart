@@ -9,10 +9,17 @@ class WispReleaseNotes {
   const WispReleaseNotes._();
 
   /// 当前应用版本（与 pubspec.yaml 的 `version:` 保持一致）。
-  static const String currentVersion = '1.0.18';
+  static const String currentVersion = '1.0.19';
 
   /// 新版本在前，设置页按这个顺序展示。
   static const List<WispReleaseEntry> entries = <WispReleaseEntry>[
+    WispReleaseEntry(version: '1.0.19', changes: <String>[
+      '修复 macOS 版「无法占用端口：Operation not permitted」：Release 版误开了沙盒又没给网络权限，现已关闭沙盒（本应用不经过 Mac App Store，沙盒只有害处）',
+      '补齐 macOS 本地网络权限声明，系统会正常弹出授权询问，不再静默失败',
+      '更新弹层改为三个动作：一键更新（下载并自动安装）、仅下载（完成后提示安装）、打开下载页',
+      'Windows 一键更新静默完成安装并自动打开新版；macOS 自动挂载镜像写入「应用程序」',
+      'macOS 关闭窗口后驻留菜单栏、不再显示 Dock 图标；菜单栏图标可唤回主窗口或退出，有新请求时图标变红提醒',
+    ]),
     WispReleaseEntry(version: '1.0.18', changes: <String>[
       '根治通知「要第二次才会出现」：卡片位置固定，入场动画只调透明度，绝不会再停在屏幕外',
       '通知发出后由原生层回报「是否真的画出来了」，没画出来自动重发一次',

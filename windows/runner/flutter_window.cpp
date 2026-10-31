@@ -1066,6 +1066,10 @@ bool FlutterWindow::OnCreate() {
         } else if (name == "openUrl") {
           // 打开下载链接。返回 true/false，Dart 侧据此提示失败原因。
           result->Success(OpenUrl(GetString("url")) == 0);
+        } else if (name == "runInstaller") {
+          // 启动下载好的安装程序（自动更新）。返回 true/false。
+          result->Success(
+              RunInstaller(GetString("path"), GetString("args")));
         } else if (name == "surfaceStatus") {
           // 桌面浮层的真实状态：Dart 侧用它确认"通知真的出来了"，
           // 没出来就重发一次——解决"第一次不出现、第二次才出现"。
@@ -1596,6 +1600,36 @@ int FlutterWindow::OpenUrl(const std::wstring& url) {
   WispDbgLog("OpenUrl ShellExecuteW code=" + std::to_string(code));
   // ShellExecute 成功返回 > 32；失败返回具体错误码（<= 32）。
   return code > 32 ? 0 : code;
+}
+
+// 启动本地安装程序（自动更新）。与 OpenUrl 一样是 ShellExecuteW，
+// 但语义不同必须分开：安装器要提权（PrivilegesRequired=admin），
+// 动词必须用 "runas" 才会正常弹 UAC；CreateProcess 直接启动带
+// admin 清单的 exe 会报 ERROR_ELEVATION_REQUIRED。
+//
+// 只放行 .exe：openUrl 的教训同样适用——这个通道一旦能开任意路径，
+// 就等于开了一个任意执行的口子。
+bool FlutterWindow::RunInstaller(const std::wstring& path,
+                                 const std::wstring& args) {
+  if (path.size() < 4) return false;
+  std::wstring lowered = path;
+  std::transform(lowered.begin(), lowered.end(), lowered.begin(),
+                 [](wchar_t c) { return static_cast<wchar_t>(::towlower(c)); });
+  if (lowered.rfind(L".exe") != lowered.size() - 4) {
+    WispDbgLog("RunInstaller rejected non-exe path");
+    return false;
+  }
+  DWORD attrs = GetFileAttributesW(path.c_str());
+  if (attrs == INVALID_FILE_ATTRIBUTES || (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+    WispDbgLog("RunInstaller: file not found");
+    return false;
+  }
+  HINSTANCE result = ShellExecuteW(GetHandle(), L"runas", path.c_str(),
+                                   args.empty() ? nullptr : args.c_str(),
+                                   nullptr, SW_SHOWNORMAL);
+  int code = static_cast<int>(reinterpret_cast<intptr_t>(result));
+  WispDbgLog("RunInstaller ShellExecuteW code=" + std::to_string(code));
+  return code > 32;
 }
 
 // ---------------------------------------------------------------------------

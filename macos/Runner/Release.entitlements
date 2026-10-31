@@ -2,7 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- 沙盒必须关掉：Wisp 是 GitHub 直发的非商店应用，不经过 MAS 审核，
+	     沙盒对我们只有害处——
+	     · 没有 network.server 就无法 bind 53317（报 "Operation not permitted"，
+	       这正是 Release 版打不开端口的原因；Debug 版因为有 network.server
+	       所以开发时从来没复现过）；
+	     · 接收文件要写到用户选的任意目录、打开保存目录、唤起浏览器；
+	     · 自动更新要挂载 dmg 并写入 /Applications——沙盒下全都会被拒。 -->
 	<key>com.apple.security.app-sandbox</key>
-	<true/>
+	<false/>
 </dict>
 </plist>
