@@ -142,6 +142,16 @@ jobs:
         run: |
           # 把 GitHub Secret 里的 base64 密钥库还原成文件，并写出 key.properties。
           # 每次发版都用这同一把密钥签名，覆盖安装才不会再报"签名不一致"。
+          #
+          # 四个 secret 缺一个都别往下走：空值会写出空的 key.properties，
+          # gradle 在配置期拿 null 转型，报的是一句和签名毫无关系的 NPE。
+          for pair in "ANDROID_KEYSTORE_BASE64=$KS_B64" "ANDROID_KEY_ALIAS=$KS_ALIAS" \
+                      "ANDROID_KEY_PASSWORD=$KS_KEY_PWD" "ANDROID_STORE_PASSWORD=$KS_STORE_PWD"; do
+            if [ -z "${pair#*=}" ]; then
+              echo "::error::缺少签名 secret：${pair%%=*}（Settings → Secrets and variables → Actions）"
+              exit 1
+            fi
+          done
           echo "$KS_B64" | base64 -d > android/upload-keystore.jks
           cat > android/key.properties <<EOF
           storePassword=$KS_STORE_PWD
@@ -150,10 +160,25 @@ jobs:
           storeFile=upload-keystore.jks
           EOF
           ls -la android/upload-keystore.jks
+          # 口令或别名不对也在这里当场暴露，别等 gradle 报"Keystore file not found"。
+          keytool -list -keystore android/upload-keystore.jks \
+            -storepass "$KS_STORE_PWD" -alias "$KS_ALIAS" > /dev/null \
+            || { echo "::error::密钥库无法用给定口令/别名打开（storePassword 或 keyAlias 不对）"; exit 1; }
 
       - name: Build (android)
         if: matrix.target == 'android'
-        run: flutter build apk --release
+        shell: bash
+        # 失败时把关键错误行写成注解（日志下载要 admin 权限，注解公开可读）。
+        run: |
+          set +e
+          flutter build apk --release 2>&1 | tee android-build.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            grep -iE "error|failed|not found|keystore|exception" android-build.log | tail -15 | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+          fi
+          exit "$code"
 
       # ---------- 打包 ----------
       # 便携 zip + Inno Setup 安装包，双形态都给。

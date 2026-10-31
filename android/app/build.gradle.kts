@@ -46,11 +46,21 @@ android {
     // 只有存在 key.properties 时才创建"release"签名配置，避免本地无密钥时
     // 在配置阶段读取 null 直接抛 NPE。
     if (keystorePropertiesFile.exists()) {
+        // 注意：这里必须用 rootProject.file()，不能用 file()。
+        // file() 相对的是 app 模块目录（android/app/），而 key.properties 与
+        // 密钥库都放在 android/ 下——用 file() 会去 android/app/ 找一个不存在的
+        // 文件，报的却是含混的 "Keystore file not found"（1.0.20 首次带签名
+        // 发版就栽在这）。
+        val storeFileValue = keystoreProperties["storeFile"] as String
+        val resolvedStore = rootProject.file(storeFileValue)
+        require(resolvedStore.exists()) {
+            "key.properties 里的 storeFile 指向的密钥库不存在：${resolvedStore.absolutePath}"
+        }
         signingConfigs {
             create("release") {
                 keyAlias = keystoreProperties["keyAlias"] as String
                 keyPassword = keystoreProperties["keyPassword"] as String
-                storeFile = file(keystoreProperties["storeFile"] as String)
+                storeFile = resolvedStore
                 storePassword = keystoreProperties["storePassword"] as String
             }
         }
