@@ -57,6 +57,29 @@ class FlutterWindow : public Win32Window {
   // first-frame callback popping the window back up after it was hidden.
   bool close_requested_ = false;
 
+  // --- 启动可见性（静默启动） ---
+  //
+  // 首帧画好之后**不**立刻显示，先等 Dart 读完设置告诉我们这一次要不要露面。
+  // 原因是"静默启动"是用户设置，只有 Dart 侧知道；原生层先显示再隐藏会闪一下。
+  // Dart 迟迟不回（设置读失败、通道异常）就用兜底计时器照常显示，绝不把窗口
+  // 永久藏起来——那等于应用启动后什么也没发生。
+  bool first_frame_ready_ = false;
+  bool startup_decided_ = false;
+  bool startup_visible_ = true;
+  bool shown_once_ = false;
+  UINT_PTR startup_timer_ = 0;
+  // force=true 时不等首帧（兜底路径：首帧迟迟不来也得把窗口亮出来）。
+  void MaybeShowOnStartup(bool force = false);
+
+  // --- 主窗口尺寸/位置记忆 ---
+  // 存在注册表 HKCU\Software\Wisp\WindowPlacement（一段二进制记录），
+  // 没有记录时按竖屏比例居中打开。
+  void ApplyWindowPlacement();
+  void SaveWindowPlacement();
+  // 最近一次"正常态"（非最大化、非最小化）的窗口矩形，单位物理像素。
+  RECT last_normal_rect_{0, 0, 0, 0};
+  bool placement_maximized_ = false;
+
   // --- floating ball ---
   // The ball window is always kBallWindow logical px. Expanded state draws
   // the ball image centred; handle state draws only a slim pill hugging the

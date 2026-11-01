@@ -59,6 +59,22 @@ class DesktopService {
     }
   }
 
+  /// 启动时要不要显示主窗口（静默启动传 false）。
+  ///
+  /// 原生层把首帧画好之后**先不显示**，等这个调用表态——设置只有 Dart 侧知道，
+  /// 原生层自己猜会先闪一下窗口再藏起来。原生侧有 1.5s 兜底：Dart 一直不说话
+  /// 就照常显示，绝不会把窗口永久藏住。
+  static Future<void> setStartupVisible(bool visible) async {
+    try {
+      await _channel.invokeMethod<void>(
+          'setStartupVisible', <String, bool>{'visible': visible});
+    } on MissingPluginException {
+      // 忽略。
+    } on PlatformException {
+      // 忽略。
+    }
+  }
+
   /// 把主窗口显示出来并前置（托盘/悬浮球点击时用）。
   static Future<void> showWindow() async {
     try {

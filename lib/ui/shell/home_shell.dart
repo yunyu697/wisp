@@ -176,108 +176,125 @@ class _IncomingSheet extends StatelessWidget {
     final AppState state = context.read<AppState>();
     final int total = request.files.fold(0, (int sum, TransferFile f) => sum + f.size);
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: WispColors.success.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Text(
-              '有人要发东西给你',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: WispColors.success,
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: WispColors.success.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text(
+                '有人要发东西给你',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: WispColors.success,
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-          DeviceAvatar(kind: request.sender.kind, size: 56),
-          const SizedBox(height: 10),
-          Text(request.sender.alias, style: Theme.of(context).textTheme.headlineMedium),
-          const SizedBox(height: 4),
-          Text(
-            '${request.files.length} 个文件 · ${Format.bytes(total)}',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          const SizedBox(height: 18),
-          Container(
-            constraints: const BoxConstraints(maxHeight: 190),
-            decoration: BoxDecoration(
-              color: WispColors.surfaceAlt(context),
-              borderRadius: BorderRadius.circular(18),
+            const SizedBox(height: 16),
+            DeviceAvatar(kind: request.sender.kind, size: 56),
+            const SizedBox(height: 10),
+            Text(
+              request.sender.alias,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.headlineMedium,
             ),
-            child: ListView.builder(
-              shrinkWrap: true,
-              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
-              itemCount: request.files.length,
-              itemBuilder: (BuildContext context, int index) {
-                final TransferFile file = request.files[index];
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 7),
-                  child: Row(
-                    children: <Widget>[
-                      Icon(
-                        FileKind.iconFor(file.name),
-                        size: 16,
-                        color: FileKind.colorFor(file.name),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          file.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                      ),
-                      Text(Format.bytes(file.size), style: Theme.of(context).textTheme.labelMedium),
-                    ],
-                  ),
-                );
-              },
+            const SizedBox(height: 4),
+            Text(
+              '${request.files.length} 个文件 · ${Format.bytes(total)}',
+              style: Theme.of(context).textTheme.bodySmall,
             ),
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: <Widget>[
-              // 两个按钮严格等宽等高（桌面端弹层曾因 flex 不均被吐槽）。
-              Expanded(
-                child: GradientButton(
-                  label: '接收',
-                  icon: Icons.download_rounded,
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    state.acceptIncoming();
+            const SizedBox(height: 18),
+            // 列表是唯一可伸缩的一块：窗口被拉矮时先压它，而不是把下面的
+            // 「接收 / 拒绝」挤出屏幕。以前这里是固定 maxHeight，窗口一矮
+            // 整个 Column 就溢出，按钮被窗口底边切掉——用户反馈的
+            // "缩小窗口时通知的按钮被遮挡"就是这个。
+            Flexible(
+              child: Container(
+                constraints: const BoxConstraints(maxHeight: 190),
+                decoration: BoxDecoration(
+                  color: WispColors.surfaceAlt(context),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+                  itemCount: request.files.length,
+                  itemBuilder: (BuildContext context, int index) {
+                    final TransferFile file = request.files[index];
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      child: Row(
+                        children: <Widget>[
+                          Icon(
+                            FileKind.iconFor(file.name),
+                            size: 16,
+                            color: FileKind.colorFor(file.name),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              file.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ),
+                          Text(Format.bytes(file.size),
+                              style: Theme.of(context).textTheme.labelMedium),
+                        ],
+                      ),
+                    );
                   },
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: SizedBox(
-                  height: 54,
-                  child: OutlinedButton(
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: <Widget>[
+                // 两个按钮严格等宽等高（桌面端弹层曾因 flex 不均被吐槽）。
+                Expanded(
+                  child: GradientButton(
+                    label: '接收',
+                    icon: Icons.download_rounded,
                     onPressed: () {
                       Navigator.of(context).pop();
-                      state.rejectIncoming();
+                      state.acceptIncoming();
                     },
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: WispColors.secondaryText(context),
-                      side: BorderSide(color: WispColors.line(context)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(27)),
-                    ),
-                    child: const Text('拒绝'),
                   ),
                 ),
-              ),
-            ],
-          ),
-        ],
+                const SizedBox(width: 10),
+                Expanded(
+                  child: SizedBox(
+                    height: 54,
+                    child: OutlinedButton(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        state.rejectIncoming();
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: WispColors.secondaryText(context),
+                        side: BorderSide(color: WispColors.line(context)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(27)),
+                      ),
+                      child: const Text('拒绝'),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

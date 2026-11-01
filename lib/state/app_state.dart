@@ -123,6 +123,9 @@ class AppState extends ChangeNotifier {
 
   Future<void> init() async {
     settings = await _settingsService.load();
+    // 静默启动：读完设置就立刻表态，原生层正等着这句话决定要不要显示窗口。
+    // 放在最前面，是因为它决定了"用户第一眼看到什么"，别的初始化都更慢。
+    await DesktopService.setStartupVisible(!settings.silentStart);
     history
       ..clear()
       ..addAll(await _historyService.load());
@@ -409,6 +412,13 @@ class AppState extends ChangeNotifier {
     // 同步给原生层：托盘开关是窗口行为，得让 C++ 那边也知道。
     await DesktopService.setMinimizeToTray(value);
   }
+
+  /// 静默启动：下次启动时不弹主窗口。
+  ///
+  /// 只影响"下一次启动"，当前这次窗口该在哪儿还在哪儿——用户点开关的时候
+  /// 窗口正开着，把它藏起来只会莫名其妙。
+  Future<void> setSilentStart(bool value) =>
+      updateSettings(settings.copyWith(silentStart: value));
 
   /// 开关桌面悬浮球。关掉时原生层会销毁悬浮球和气泡窗口。
   Future<void> setFloatingBall(bool value) async {

@@ -225,6 +225,15 @@ class SettingsPage extends StatelessWidget {
                     ),
                   ),
                   _SettingRow(
+                    icon: Icons.visibility_off_rounded,
+                    title: '静默启动',
+                    subtitle: '启动时不显示主窗口，只在托盘里等着收文件（适合开机自启）',
+                    trailing: Switch(
+                      value: state.settings.silentStart,
+                      onChanged: state.setSilentStart,
+                    ),
+                  ),
+                  _SettingRow(
                     icon: Icons.circle_rounded,
                     title: '桌面悬浮球',
                     subtitle: '桌面上常驻一个可拖动的圆球，收到文件时在旁边弹出气泡',

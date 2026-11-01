@@ -38,6 +38,18 @@ constexpr UINT kTrayCommandQuit = 1002;
 constexpr LONG kMinWindowWidth = 420;
 constexpr LONG kMinWindowHeight = 690;
 
+// 首次启动（没有记忆位置）时的窗口尺寸：竖屏比例，居中打开。
+//
+// 竖屏是这套界面的设计意图（底部导航 + 单栏，和手机一致），横屏那套侧边栏
+// 是"窗口被拉宽之后"的适配。所以第一次见面给一个竖屏窗口，而不是随手 1280×720。
+// 高度按工作区夹过（见 ApplyWindowPlacement），小屏笔记本上也放得下。
+constexpr int kDefaultWindowWidth = 440;
+constexpr int kDefaultWindowHeight = 820;
+
+// 首帧画好之后等 Dart 表态的上限。超时就当"要显示"——把窗口永久藏起来
+// 比多弹一次窗口糟糕得多。
+constexpr int kStartupFallbackMs = 1500;
+
 // Window class names.
 constexpr wchar_t kBallClass[] = L"WISP_FLOAT_BALL";
 constexpr wchar_t kBubbleClass[] = L"WISP_BUBBLE";
@@ -170,6 +182,7 @@ constexpr UINT_PTR kBubbleAnimTimerId = 13;
 constexpr UINT_PTR kBallDimTimerId = 14;
 constexpr UINT_PTR kBallIdleTimerId = 15;
 constexpr UINT_PTR kBallTopTimerId = 16;
+constexpr UINT_PTR kStartupTimerId = 17;
 
 // 主窗口恢复后的连续重绘次数（间隔 60/120/240/480/960ms）。
 constexpr int kRestoreRedrawSteps = 6;
@@ -522,6 +535,11 @@ void DrawString(Gdiplus::Graphics& g, const std::wstring& text,
 }
 
 // 多行文本（GDI+ 在布局矩形内自动换行），返回实际行数。
+//
+// **必须裁剪到布局矩形内**：GDI+ 的 DrawString 只在"行内"换行，超出矩形高度
+// 的行会照常画下去。正文写的是"某某设备 想发送 N 个文件（大小）"——设备名一长
+// 就是三四行，多出来的行直接盖在下面的「接收 / 忽略」按钮上，
+// 用户看到的就是"通知的按钮被遮挡"。裁剪之后最多是文字被切掉，按钮永远干净。
 int DrawWrapped(Gdiplus::Graphics& g, const std::wstring& text,
                 const Gdiplus::RectF& rc, float px, bool bold, COLORREF color) {
   Gdiplus::Font* font = UiFont(px, bold);
@@ -529,8 +547,10 @@ int DrawWrapped(Gdiplus::Graphics& g, const std::wstring& text,
                                            GetGValue(color), GetBValue(color)));
   Gdiplus::StringFormat format;
   format.SetLineAlignment(Gdiplus::StringAlignmentNear);
+  g.SetClip(rc);
   g.DrawString(text.c_str(), static_cast<INT>(text.size()), font, rc, &format,
                &brush);
+  g.ResetClip();
   delete font;
   return 2;  // 布局高度由调用方固定为两行。
 }
@@ -898,6 +918,11 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
 
+  // 先把窗口摆到该在的位置（记忆的位置 / 首次启动的竖屏居中），
+  // 再按最终客户区尺寸创建引擎视图——顺序反了会先按 1280×720 建一次表面，
+  // 再缩到竖屏，白闪一帧。
+  ApplyWindowPlacement();
+
   RECT frame = GetClientArea();
 
   // The size here must match the window dimensions to avoid unnecessary surface
@@ -970,6 +995,18 @@ bool FlutterWindow::OnCreate() {
 
         if (name == "setMinimizeToTray") {
           minimize_to_tray_ = GetBool("enabled", true);
+          result->Success();
+        } else if (name == "setStartupVisible") {
+          // Dart 读完设置后的表态：这次启动要不要显示主窗口（静默启动 = false）。
+          // 表态一次就够，之后再调只当作"显示/隐藏主窗口"用。
+          const bool visible = GetBool("visible", true);
+          startup_decided_ = true;
+          startup_visible_ = visible;
+          KillTimer(GetHandle(), kStartupTimerId);
+          startup_timer_ = 0;
+          if (visible) {
+            MaybeShowOnStartup();
+          }
           result->Success();
         } else if (name == "isWindowVisible") {
           result->Success(GetHandle() != nullptr && IsWindowVisible(GetHandle()));
@@ -1198,9 +1235,11 @@ bool FlutterWindow::OnCreate() {
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     // 如果用户在首帧渲染完成之前就点了关闭，别再把窗口弹回来。
-    if (!close_requested_) {
-      this->Show();
-    }
+    if (close_requested_) return;
+    // 首帧好了，但还不显示：等 Dart 读完设置说"这次要不要露面"。
+    // 静默启动是 Dart 侧的用户设置，原生层先显示再隐藏会闪一下。
+    first_frame_ready_ = true;
+    MaybeShowOnStartup();
   });
 
   // Flutter can complete the first frame before the "show window" callback is
@@ -1219,6 +1258,12 @@ bool FlutterWindow::OnCreate() {
   // 子窗口（Flutter 视图）没注册也没关系，Shell 会沿父链找到这个顶层窗口。
   DragAcceptFiles(GetHandle(), TRUE);
 
+  // Dart 迟迟不表态（设置读失败、通道异常）时的兜底：照常显示窗口。
+  // 宁可多弹一次，也不能让应用启动之后什么都不发生。
+  KillTimer(GetHandle(), kStartupTimerId);
+  startup_timer_ =
+      SetTimer(GetHandle(), kStartupTimerId, kStartupFallbackMs, nullptr);
+
   return true;
 }
 
@@ -1234,6 +1279,145 @@ void FlutterWindow::OnDestroy() {
   }
 
   Win32Window::OnDestroy();
+}
+
+// ---------------------------------------------------------------------------
+// 启动可见性（静默启动）
+// ---------------------------------------------------------------------------
+
+void FlutterWindow::MaybeShowOnStartup(bool force) {
+  HWND hwnd = GetHandle();
+  if (hwnd == nullptr || shown_once_ || close_requested_) return;
+  // 三件事都齐了才显示：首帧画好了（不然会先闪一帧白）、Dart 表态了、
+  // 用户这次确实要看到窗口。
+  if (!force && !first_frame_ready_) return;
+  if (!startup_decided_ || !startup_visible_) return;
+
+  shown_once_ = true;
+  Show();
+  // 记忆里是最大化：显示之后再展开，避免"先小窗口再跳大"。
+  if (placement_maximized_) {
+    ShowWindow(hwnd, SW_MAXIMIZE);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 主窗口尺寸/位置记忆
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// 记忆记录的版本标记。字段顺序变了就换一个，读到旧格式直接当没有记录。
+constexpr DWORD kPlacementMagic = 0x31535757;  // 'WWS1'
+constexpr wchar_t kPlacementSubKey[] = L"Software\\Wisp";
+constexpr wchar_t kPlacementValueName[] = L"WindowPlacement";
+
+struct WindowPlacementRecord {
+  DWORD magic;
+  LONG left;
+  LONG top;
+  LONG right;
+  LONG bottom;
+  DWORD maximized;
+};
+
+// 记忆的矩形是否还落在某台显示器上。
+//
+// 拔掉副屏、改分辨率、换缩放之后，原来的坐标可能落在"不存在的桌面"里，
+// 照原样恢复等于窗口在屏幕外——用户看到的就是"启动了但界面不见了"。
+bool RectOnAnyMonitor(const RECT& rc) {
+  if (rc.right - rc.left < 80 || rc.bottom - rc.top < 80) return false;
+  HMONITOR mon = MonitorFromRect(&rc, MONITOR_DEFAULTTONULL);
+  if (mon == nullptr) return false;
+  MONITORINFO mi{sizeof(MONITORINFO)};
+  if (!GetMonitorInfoW(mon, &mi)) return false;
+  RECT hit{};
+  if (!IntersectRect(&hit, &rc, &mi.rcMonitor)) return false;
+  // 至少要有一小块（标题栏范围）在屏幕上，才谈得上"能拖回来"。
+  return (hit.right - hit.left) >= 80 && (hit.bottom - hit.top) >= 48;
+}
+
+}  // namespace
+
+void FlutterWindow::ApplyWindowPlacement() {
+  HWND hwnd = GetHandle();
+  if (hwnd == nullptr) return;
+
+  WindowPlacementRecord rec{};
+  DWORD size = sizeof(rec);
+  DWORD type = 0;
+  const LONG read = RegGetValueW(HKEY_CURRENT_USER, kPlacementSubKey,
+                                 kPlacementValueName, RRF_RT_REG_BINARY, &type,
+                                 &rec, &size);
+  if (read == ERROR_SUCCESS && size == sizeof(rec) &&
+      rec.magic == kPlacementMagic) {
+    const RECT saved{rec.left, rec.top, rec.right, rec.bottom};
+    if (RectOnAnyMonitor(saved)) {
+      const int w = static_cast<int>(saved.right - saved.left);
+      const int h = static_cast<int>(saved.bottom - saved.top);
+      SetWindowPos(hwnd, nullptr, static_cast<int>(saved.left),
+                   static_cast<int>(saved.top), w, h,
+                   SWP_NOZORDER | SWP_NOACTIVATE);
+      last_normal_rect_ = saved;
+      placement_maximized_ = rec.maximized != 0;
+      return;
+    }
+  }
+
+  // 没有记忆（首次安装）：竖屏、居中。
+  RECT work{};
+  HMONITOR mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY);
+  MONITORINFO mi{sizeof(MONITORINFO)};
+  if (mon != nullptr && GetMonitorInfoW(mon, &mi)) {
+    work = mi.rcWork;
+  } else {
+    SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
+  }
+  const int work_w = static_cast<int>(work.right - work.left);
+  const int work_h = static_cast<int>(work.bottom - work.top);
+  int w = ScaleFor(hwnd, kDefaultWindowWidth);
+  int h = ScaleFor(hwnd, kDefaultWindowHeight);
+  // 小屏兜底：留出约 8% 的余量，并且保证仍然是竖屏（高 > 宽）。
+  const int cap_w = work_w - work_w / 12;
+  const int cap_h = work_h - work_h / 12;
+  if (w > cap_w) w = cap_w;
+  if (h > cap_h) h = cap_h;
+  if (w >= h) w = h * 5 / 8;
+  const int x = static_cast<int>(work.left) + (work_w - w) / 2;
+  const int y = static_cast<int>(work.top) + (work_h - h) / 2;
+  SetWindowPos(hwnd, nullptr, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+  last_normal_rect_ = RECT{x, y, x + w, y + h};
+  placement_maximized_ = false;
+}
+
+void FlutterWindow::SaveWindowPlacement() {
+  HWND hwnd = GetHandle();
+  if (hwnd == nullptr) return;
+
+  // 只记"正常态"矩形：最大化时的 GetWindowRect 是整块屏幕，记下来下次
+  // 取消最大化就回不到原来的大小了。
+  if (!IsIconic(hwnd) && !IsZoomed(hwnd)) {
+    RECT rc{};
+    if (GetWindowRect(hwnd, &rc)) last_normal_rect_ = rc;
+  }
+  if (last_normal_rect_.right - last_normal_rect_.left < 80) return;
+
+  WindowPlacementRecord rec{};
+  rec.magic = kPlacementMagic;
+  rec.left = last_normal_rect_.left;
+  rec.top = last_normal_rect_.top;
+  rec.right = last_normal_rect_.right;
+  rec.bottom = last_normal_rect_.bottom;
+  rec.maximized = IsZoomed(hwnd) ? 1 : 0;
+
+  HKEY key = nullptr;
+  if (RegCreateKeyExW(HKEY_CURRENT_USER, kPlacementSubKey, 0, nullptr, 0,
+                      KEY_SET_VALUE, nullptr, &key, nullptr) != ERROR_SUCCESS) {
+    return;
+  }
+  RegSetValueExW(key, kPlacementValueName, 0, REG_BINARY,
+                 reinterpret_cast<const BYTE*>(&rec), sizeof(rec));
+  RegCloseKey(key);
 }
 
 // ---------------------------------------------------------------------------
@@ -1307,14 +1491,76 @@ void FlutterWindow::CreateBallWindow() {
   RegisterClassW(&wc);
 
   int size = ScaleFor(GetHandle(), kBallWindow);
-  // 初始位置：优先用上次记忆的位置，否则主屏工作区右下角。
-  RECT work;
-  SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
+
+  // 恢复上次的位置。这里有一条**必须**遵守的约束：
+  // 「吸附」不只是"缩回把手"的开关，它同时承诺"这个把手正贴在屏幕边上"。
+  // 以前这里直接信任记忆里的 x/y + snapped 标志，于是记忆坐标一旦失效
+  // （换了缩放比例、拔了副屏、SPI_GETWORKAREA 把副屏上的球夹回主屏），
+  // 就会得到一个"飘在屏幕中间、却按吸附逻辑缩成把手"的东西——
+  // 用户看到的就是「明明没在屏幕边缘，却隐藏成把手了」。
+  //
+  // 所以吸附状态一律**按当前显示器工作区重新推导坐标**，而不是信任记忆值；
+  // 推导不出来就老老实实当自由球，不进入缩回流程。
+  const bool has_saved = ball_saved_pos_.x >= 0 && ball_saved_pos_.y >= 0;
+  POINT anchor = has_saved ? ball_saved_pos_ : POINT{-1, -1};
+  RECT work{};
+  if (has_saved) {
+    // 用记忆点所在的显示器：球拖到副屏时不能拿主屏工作区去夹。
+    HMONITOR mon = MonitorFromPoint(anchor, MONITOR_DEFAULTTOPRIMARY);
+    MONITORINFO mi{sizeof(MONITORINFO)};
+    if (mon != nullptr && GetMonitorInfoW(mon, &mi)) {
+      work = mi.rcWork;
+    }
+  }
+  if (work.right - work.left <= 0) {
+    SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
+  }
+
   int x;
   int y;
-  if (ball_saved_pos_.x >= 0 && ball_saved_pos_.y >= 0) {
-    x = ball_saved_pos_.x;
-    y = ball_saved_pos_.y;
+  bool snapped = false;
+  int edge = -1;
+  if (has_saved && ball_saved_snapped_ && ball_saved_edge_ >= 0 &&
+      ball_saved_edge_ <= 3) {
+    // 沿边方向的坐标沿用记忆，垂直于边的坐标按工作区重新算——这一步就是
+    // "贴边"的保证，和 SnapBallToEdge 里完全一致（inset 为 0）。
+    edge = ball_saved_edge_;
+    switch (edge) {
+      case 0:  // 左
+        x = work.left;
+        y = anchor.y;
+        break;
+      case 1:  // 右
+        x = work.right - size;
+        y = anchor.y;
+        break;
+      case 2:  // 上
+        x = anchor.x;
+        y = work.top;
+        break;
+      default:  // 下
+        x = anchor.x;
+        y = work.bottom - size;
+        break;
+    }
+    if (edge == 0 || edge == 1) {
+      if (y < work.top) y = work.top;
+      if (y + size > work.bottom) y = work.bottom - size;
+    } else {
+      if (x < work.left) x = work.left;
+      if (x + size > work.right) x = work.right - size;
+    }
+    // 推导完再验一遍：真的贴住了才算吸附，否则退回自由球（宁可显示成球，
+    // 也不要出现一个悬在半空的把手）。
+    const bool flush = (edge == 0 && x <= work.left + 1) ||
+                       (edge == 1 && x + size >= work.right - 1) ||
+                       (edge == 2 && y <= work.top + 1) ||
+                       (edge == 3 && y + size >= work.bottom - 1);
+    snapped = flush;
+    if (!snapped) edge = -1;
+  } else if (has_saved) {
+    x = anchor.x;
+    y = anchor.y;
     // 夹回工作区，防止显示器分辨率变化后球跑出屏幕。
     if (x + size > work.right) x = work.right - size;
     if (y + size > work.bottom) y = work.bottom - size;
@@ -1332,14 +1578,8 @@ void FlutterWindow::CreateBallWindow() {
       nullptr);
   if (ball_window_ == nullptr) return;
 
-  // 记忆位置若带吸附状态，恢复之（展开后照常自动缩回把手）。
-  if (ball_saved_pos_.x >= 0 && ball_saved_snapped_ &&
-      ball_saved_edge_ >= 0 && ball_saved_edge_ <= 3) {
-    ball_snapped_ = true;
-    ball_edge_ = ball_saved_edge_;
-  } else {
-    ball_snapped_ = false;
-  }
+  ball_snapped_ = snapped;
+  ball_edge_ = snapped ? edge : 1;
   ball_expanded_ = true;
   ball_t_ = 1.0f;
   // 新窗口是全不透明的；置顶守护从这里开始轮询。
@@ -2824,8 +3064,27 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   if (message == WM_CLOSE && minimize_to_tray_) {
     // 关闭按钮只收进托盘，接收服务继续在后台跑。
     close_requested_ = true;
+    // 收进托盘也算一次"用户认可的窗口状态"，记下来下次照这个开。
+    SaveWindowPlacement();
     ShowWindow(hwnd, SW_HIDE);
     return 0;
+  }
+
+  // 拖完/改完尺寸松手：这时候的位置和大小才是用户想要的，落盘。
+  if (message == WM_EXITSIZEMOVE) {
+    SaveWindowPlacement();
+  }
+  // 托盘「退出」走的是 DestroyWindow，没有 WM_CLOSE，在这里补一次。
+  if (message == WM_DESTROY) {
+    SaveWindowPlacement();
+  }
+  // 最大化/还原不产生 WM_EXITSIZEMOVE（双击标题栏、Win+↑），
+  // 这里只更新"正常态"矩形，写盘留到关闭时，避免每次 WM_SIZE 都碰注册表。
+  if (message == WM_SIZE || message == WM_MOVE) {
+    if (!IsIconic(hwnd) && !IsZoomed(hwnd)) {
+      RECT rc{};
+      if (GetWindowRect(hwnd, &rc)) last_normal_rect_ = rc;
+    }
   }
 
   // 主窗口重新获得焦点（点任务栏、Alt+Tab、点桌面通知的空白处…）时，
@@ -2857,6 +3116,14 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
 
   switch (message) {
     case WM_TIMER:
+      // 启动兜底：Dart 一直没表态（设置读失败/通道异常）就照常显示窗口。
+      if (wparam == kStartupTimerId) {
+        KillTimer(hwnd, kStartupTimerId);
+        startup_timer_ = 0;
+        startup_decided_ = true;
+        MaybeShowOnStartup(true);
+        return 0;
+      }
       // 恢复窗口后的延迟补绘（Impeller 表面重建是异步的）。
       if (wparam == kRestoreRedrawTimerId) {
         RunRestoreRedrawStep();

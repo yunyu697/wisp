@@ -29,6 +29,7 @@ class WispSettings {
     this.discoveryMode = DiscoveryMode.auto,
     this.scanIntervalSeconds = 30,
     this.minimizeToTray = true,
+    this.silentStart = false,
     this.floatingBall = false,
     this.ballShowDelayMs = 300,
     this.ballPosX,
@@ -70,6 +71,12 @@ class WispSettings {
 
   /// 点关闭按钮时是否最小化到系统托盘。
   final bool minimizeToTray;
+
+  /// 静默启动：启动时不显示主窗口，只在托盘（以及悬浮球，如果开了）里待着。
+  ///
+  /// 典型场景是开机自启——用户开机只是想让它在后台等着收文件，
+  /// 不需要每次都被一个窗口挡住。
+  final bool silentStart;
 
   /// 是否启用桌面悬浮球。启用后桌面上常驻一个软件图标圆球，
   /// 有传输请求时在它旁边弹出气泡。
@@ -116,6 +123,7 @@ class WispSettings {
     DiscoveryMode? discoveryMode,
     int? scanIntervalSeconds,
     bool? minimizeToTray,
+    bool? silentStart,
     bool? floatingBall,
     int? ballShowDelayMs,
     int? ballPosX,
@@ -144,6 +152,7 @@ class WispSettings {
         discoveryMode: discoveryMode ?? this.discoveryMode,
         scanIntervalSeconds: scanIntervalSeconds ?? this.scanIntervalSeconds,
         minimizeToTray: minimizeToTray ?? this.minimizeToTray,
+        silentStart: silentStart ?? this.silentStart,
         floatingBall: floatingBall ?? this.floatingBall,
         ballShowDelayMs: ballShowDelayMs ?? this.ballShowDelayMs,
         ballPosX: ballPosX ?? this.ballPosX,
@@ -172,6 +181,7 @@ class WispSettings {
         'discoveryMode': discoveryMode.name,
         'scanIntervalSeconds': scanIntervalSeconds,
         'minimizeToTray': minimizeToTray,
+        'silentStart': silentStart,
         'floatingBall': floatingBall,
         'ballShowDelayMs': ballShowDelayMs,
         'ballPosX': ballPosX,
@@ -203,6 +213,7 @@ class WispSettings {
         discoveryMode: DiscoveryMode.parse(json['discoveryMode'] as String?),
         scanIntervalSeconds: (json['scanIntervalSeconds'] as num?)?.toInt() ?? 30,
         minimizeToTray: (json['minimizeToTray'] as bool?) ?? true,
+        silentStart: (json['silentStart'] as bool?) ?? false,
         floatingBall: (json['floatingBall'] as bool?) ?? false,
         ballShowDelayMs: (json['ballShowDelayMs'] as num?)?.toInt() ?? 300,
         ballPosX: (json['ballPosX'] as num?)?.toInt(),

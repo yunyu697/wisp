@@ -1,5 +1,6 @@
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:wisp/models/device.dart';
 import 'package:wisp/models/network.dart';
@@ -20,6 +21,7 @@ void main() {
         discoveryMode: DiscoveryMode.scan,
         scanIntervalSeconds: 60,
         minimizeToTray: false,
+        silentStart: true,
         floatingBall: true,
         ballShowDelayMs: 800,
         ballPosX: 6304,
@@ -38,6 +40,7 @@ void main() {
       expect(restored.discoveryMode, DiscoveryMode.scan);
       expect(restored.scanIntervalSeconds, 60);
       expect(restored.minimizeToTray, isFalse);
+      expect(restored.silentStart, isTrue);
       expect(restored.floatingBall, isTrue);
       expect(restored.ballShowDelayMs, 800);
       expect(restored.ballPosX, 6304);
@@ -71,6 +74,9 @@ void main() {
       expect(restored.discoveryMode, DiscoveryMode.auto);
       expect(restored.scanIntervalSeconds, 30);
       expect(restored.minimizeToTray, isTrue);
+      // 静默启动是后加的，老数据里没有这一项，默认必须是"照常显示窗口"，
+      // 否则升级上来的用户会突然发现点了图标什么也没发生。
+      expect(restored.silentStart, isFalse);
       expect(restored.floatingBall, isFalse);
       expect(restored.ballShowDelayMs, 300);
       expect(restored.ballPosX, isNull);
@@ -80,6 +86,27 @@ void main() {
       // 新字段的默认值：自动检查每天一次、从未检查过。
       expect(restored.updateCheckHours, WispUpdateCadence.defaultHours);
       expect(restored.lastUpdateCheckMs, 0);
+    });
+  });
+
+  group('静默启动', () {
+    test('点开关后落盘，下次读回来还是开着', () async {
+      // 这个开关决定原生层要不要显示主窗口，只存在内存里等于没设——
+      // 所以断言的重点是"换一个 SettingsService 实例读出来也是 true"。
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final AppState state = AppState();
+      state.settings = WispSettings.defaults();
+
+      await state.setSilentStart(true);
+
+      expect(state.settings.silentStart, isTrue);
+      final WispSettings restored = await SettingsService().load();
+      expect(restored.silentStart, isTrue);
+    });
+
+    test('默认不静默，否则首次安装会以为应用没启动', () async {
+      expect(WispSettings.defaults().silentStart, isFalse);
+      expect(const WispSettings(alias: 'a', fingerprint: 'f').silentStart, isFalse);
     });
   });
 
