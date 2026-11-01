@@ -71,6 +71,21 @@ class FlutterWindow : public Win32Window {
   // force=true 时不等首帧（兜底路径：首帧迟迟不来也得把窗口亮出来）。
   void MaybeShowOnStartup(bool force = false);
 
+  // --- 窗口可见性（不可见时停掉 Dart 侧的循环动画） ---
+  //
+  // 收进托盘 / 最小化之后，Flutter 引擎仍然按 60fps 出帧：主界面那圈
+  // "正在寻找附近的设备"雷达是无限动画，没人看也照画，空转吃掉 25~50% CPU。
+  // 把可见性推给 Dart，由 TickerMode 统一静音所有 ticker——单个页面自己
+  // 判断窗口状态是治不住的，以后新加动画又会漏。
+  //
+  // visible_hint：WM_SHOWWINDOW 是"即将显示/隐藏"时发出的，那时
+  // IsWindowVisible() 还没落地（隐藏时仍返回 TRUE），必须按 wParam 直接表态，
+  // 不能现场查。传 -1 表示没有提示、现场查。
+  void NotifyWindowVisibility(bool force = false, int visible_hint = -1);
+  // 上一次推给 Dart 的值，用来去重：WM_SIZE / WM_SHOWWINDOW 会连着来好几条，
+  // 不去重就是每拖一下窗口都过一遍通道。
+  bool last_window_visible_ = true;
+
   // --- 主窗口尺寸/位置记忆 ---
   // 存在注册表 HKCU\Software\Wisp\WindowPlacement（一段二进制记录），
   // 没有记录时按竖屏比例居中打开。

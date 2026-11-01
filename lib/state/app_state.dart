@@ -38,6 +38,12 @@ class AppState extends ChangeNotifier {
   String? localIp;
   String? banner;
 
+  /// 主窗口此刻是否真的能被用户看到（收进托盘、最小化、静默启动时都是 false）。
+  ///
+  /// 初始值给 true：还没收到原生事件时宁可继续画，也不要让界面一启动就是
+  /// 静止的——真隐藏了原生层会立刻推一条 false 过来。
+  bool mainWindowVisible = true;
+
   /// 内置自签证书的 SHA-256 指纹（形如 F0:08:…），证书缺失时为 null。
   String? certFingerprint;
 
@@ -263,6 +269,11 @@ class AppState extends ChangeNotifier {
   /// 供测试直接喂进一台设备，走和真实发现完全一样的过滤逻辑。
   @visibleForTesting
   void acceptDeviceForTest(WispDevice device) => _upsertDevice(device);
+
+  /// 供测试喂原生事件，走和真实通道完全一样的处理逻辑。
+  @visibleForTesting
+  Future<void> handleDesktopEventForTest(String event, Map<Object?, Object?> args) =>
+      _onDesktopEvent(event, args);
 
   /// 传输中的高频回调不需要每字节刷新，100ms 一次足够顺滑。
   void _throttleNotify() {    final DateTime now = DateTime.now();
@@ -976,6 +987,15 @@ class AppState extends ChangeNotifier {
   /// 原生层推回的事件统一入口。
   Future<void> _onDesktopEvent(String event, Map<Object?, Object?> args) async {
     switch (event) {
+      case 'onWindowVisibility':
+        // 窗口藏起来了就把 ticker 静音：主界面那圈雷达是无限动画，
+        // 没人看还照画，空转吃掉 25~50% CPU。
+        final bool visible = args['visible'] != false;
+        if (visible != mainWindowVisible) {
+          mainWindowVisible = visible;
+          notifyListeners();
+        }
+        break;
       case 'onBallPosition':
         // 拖动结束：记住球的最终位置，下次启用时原样恢复。
         final Object? bx = args['x'];

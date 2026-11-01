@@ -18,6 +18,16 @@ class WispApp extends StatelessWidget {
       theme: WispTheme.light(),
       darkTheme: WispTheme.dark(),
       themeMode: state.settings.themeMode,
+      // 窗口藏起来（收进托盘 / 最小化 / 静默启动）时把 ticker 全部静音。
+      //
+      // 主界面那圈"正在寻找附近的设备"雷达是无限循环动画，窗口不可见时
+      // Flutter 引擎照样按 60fps 出帧，空转吃掉 25~50% CPU。这类"没人看还在画"
+      // 的动画只能在根部统一掐掉——让每个页面各自判断窗口状态，新加一个动画
+      // 就会漏一个，而且漏了也没人发现。
+      builder: (BuildContext context, Widget? child) => TickerMode(
+        enabled: state.mainWindowVisible,
+        child: child ?? const SizedBox.shrink(),
+      ),
       home: AnimatedSwitcher(
         duration: const Duration(milliseconds: 420),
         switchInCurve: Curves.easeOutCubic,

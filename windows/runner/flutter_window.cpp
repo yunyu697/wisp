@@ -1004,6 +1004,11 @@ bool FlutterWindow::OnCreate() {
           startup_visible_ = visible;
           KillTimer(GetHandle(), kStartupTimerId);
           startup_timer_ = 0;
+          // 静默启动时窗口永远不显示，也就不会有 WM_SHOWWINDOW 触发推送。
+          // 这里必须主动推一次——而且正是"用户此刻刚说完话、Dart 侧一定在听"的
+          // 时机，比启动时那条更可靠。不推的话 Dart 会以为窗口还开着，
+          // 雷达动画在托盘里空转到关机。
+          NotifyWindowVisibility(true);
           if (visible) {
             MaybeShowOnStartup();
           }
@@ -1299,6 +1304,28 @@ void FlutterWindow::MaybeShowOnStartup(bool force) {
   if (placement_maximized_) {
     ShowWindow(hwnd, SW_MAXIMIZE);
   }
+  NotifyWindowVisibility();
+}
+
+// ---------------------------------------------------------------------------
+// 窗口可见性
+// ---------------------------------------------------------------------------
+
+void FlutterWindow::NotifyWindowVisibility(bool force, int visible_hint) {
+  HWND hwnd = GetHandle();
+  if (hwnd == nullptr || channel_ == nullptr) return;
+  // 最小化也算"用户看不见"：窗口还在，引擎也还在出帧，但屏幕上没有它。
+  // 只判 IsWindowVisible 会让"最小化到任务栏"这条路径继续空转。
+  const bool visible =
+      visible_hint >= 0
+          ? visible_hint != 0
+          : (IsWindowVisible(hwnd) != FALSE && IsIconic(hwnd) == FALSE);
+  if (!force && visible == last_window_visible_) return;
+  last_window_visible_ = visible;
+  InvokeDart("onWindowVisibility",
+             flutter::EncodableMap{
+                 {flutter::EncodableValue("visible"),
+                  flutter::EncodableValue(visible)}});
 }
 
 // ---------------------------------------------------------------------------
@@ -3085,6 +3112,17 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
       RECT rc{};
       if (GetWindowRect(hwnd, &rc)) last_normal_rect_ = rc;
     }
+  }
+
+  // 窗口可见性变了就通知 Dart：不可见时把 ticker 全部静音。
+  // WM_SHOWWINDOW 覆盖显示/隐藏（收进托盘、静默启动后手动唤起），
+  // WM_SIZE 覆盖最小化/还原——最小化不产生 WM_SHOWWINDOW。
+  if (message == WM_SHOWWINDOW) {
+    // 这条消息是"即将显示/隐藏"，此刻查 IsWindowVisible 还拿到旧值，
+    // 必须按 wParam（TRUE=将要显示）表态。
+    NotifyWindowVisibility(false, wparam != 0 ? 1 : 0);
+  } else if (message == WM_SIZE) {
+    NotifyWindowVisibility();
   }
 
   // 主窗口重新获得焦点（点任务栏、Alt+Tab、点桌面通知的空白处…）时，
