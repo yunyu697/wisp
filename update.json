@@ -1,11 +1,11 @@
 {
-  "version": "1.0.23",
-  "notes": "悬浮球与吸附把手改成同一个形状的连续形变（收尾带一点回弹），去掉球边缘的第二圈边框，吸附时把手完全贴边；悬浮球常驻置顶，检测到全屏应用时自动让位；鼠标离开 1 秒后用 1 秒淡到 25%，移回来 0.1 秒恢复。macOS 菜单栏图标按应用图标重画。",
-  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v1.0.23/wisp-windows-x64-1.0.23-setup.exe",
+  "version": "1.0.24",
+  "notes": "新增「静默启动」：开机自启时只在托盘里待着，不弹主窗口。主窗口记住上次的位置和大小，首次安装按竖屏比例居中打开。修复窗口拉矮时来件弹层的按钮被挤出可视区、开机后悬浮球没贴边却缩成把手、以及窗口收进托盘后仍持续占用大量 CPU 的问题。",
+  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v1.0.24/wisp-windows-x64-1.0.24-setup.exe",
   "downloads": {
-    "windows": "https://github.com/yunyu697/wisp/releases/download/v1.0.23/wisp-windows-x64-1.0.23-setup.exe",
-    "macos": "https://github.com/yunyu697/wisp/releases/download/v1.0.23/wisp-macos-1.0.23.dmg",
-    "linux": "https://github.com/yunyu697/wisp/releases/download/v1.0.23/wisp-linux-x64-1.0.23.AppImage",
-    "android": "https://github.com/yunyu697/wisp/releases/download/v1.0.23/wisp-android-1.0.23.apk"
+    "windows": "https://github.com/yunyu697/wisp/releases/download/v1.0.24/wisp-windows-x64-1.0.24-setup.exe",
+    "macos": "https://github.com/yunyu697/wisp/releases/download/v1.0.24/wisp-macos-1.0.24.dmg",
+    "linux": "https://github.com/yunyu697/wisp/releases/download/v1.0.24/wisp-linux-x64-1.0.24.AppImage",
+    "android": "https://github.com/yunyu697/wisp/releases/download/v1.0.24/wisp-android-1.0.24.apk"
   }
 }

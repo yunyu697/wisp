@@ -9,10 +9,17 @@ class WispReleaseNotes {
   const WispReleaseNotes._();
 
   /// 当前应用版本（与 pubspec.yaml 的 `version:` 保持一致）。
-  static const String currentVersion = '1.0.23';
+  static const String currentVersion = '1.0.24';
 
   /// 新版本在前，设置页按这个顺序展示。
   static const List<WispReleaseEntry> entries = <WispReleaseEntry>[
+    WispReleaseEntry(version: '1.0.24', changes: <String>[
+      '新增「静默启动」：开机自启时只在托盘里待着，不弹主窗口，需要时从托盘或悬浮球叫回来',
+      '主窗口记住上次的位置和大小，下次启动原样恢复；第一次安装按竖屏比例在屏幕中间打开',
+      '修复窗口拉矮之后，来件弹层的「接收 / 拒绝」按钮被挤出可视区：文件列表改成可滚动的区域，按钮始终留在可见范围内',
+      '修复开机后悬浮球明明没贴边却缩成把手：现在按当前显示器重新判断是否真的贴边，没贴边就保持一个可以自由拖动的球',
+      '修复窗口收进托盘、最小化或静默启动后仍持续占用大量 CPU 的问题，笔记本不再为此发热耗电',
+    ]),
     WispReleaseEntry(version: '1.0.23', changes: <String>[
       '悬浮球与吸附把手改成同一个形状的连续形变：药丸慢慢变宽、圆角收成正圆，反过来也一样，收尾带一点回弹，不再是两个图形交叉淡入淡出',
       '去掉悬浮球边缘的第二圈边框：阴影不再来自预渲染贴图，改成按当前尺寸实时绘制',
