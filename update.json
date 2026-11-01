@@ -1,11 +1,11 @@
 {
-  "version": "1.0.22",
-  "notes": "「识别用户名」改成同名才互相可见：设了用户名后只显示同名设备，也只有同名设备看得到你；比对忽略大小写与首尾空格；用户名不一致的设备不再收到任何响应，也无法直接发起传输。",
-  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v1.0.22/wisp-windows-x64-1.0.22-setup.exe",
+  "version": "1.0.23",
+  "notes": "悬浮球与吸附把手改成同一个形状的连续形变（收尾带一点回弹），去掉球边缘的第二圈边框，吸附时把手完全贴边；悬浮球常驻置顶，检测到全屏应用时自动让位；鼠标离开 1 秒后用 1 秒淡到 25%，移回来 0.1 秒恢复。macOS 菜单栏图标按应用图标重画。",
+  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v1.0.23/wisp-windows-x64-1.0.23-setup.exe",
   "downloads": {
-    "windows": "https://github.com/yunyu697/wisp/releases/download/v1.0.22/wisp-windows-x64-1.0.22-setup.exe",
-    "macos": "https://github.com/yunyu697/wisp/releases/download/v1.0.22/wisp-macos-1.0.22.dmg",
-    "linux": "https://github.com/yunyu697/wisp/releases/download/v1.0.22/wisp-linux-x64-1.0.22.AppImage",
-    "android": "https://github.com/yunyu697/wisp/releases/download/v1.0.22/wisp-android-1.0.22.apk"
+    "windows": "https://github.com/yunyu697/wisp/releases/download/v1.0.23/wisp-windows-x64-1.0.23-setup.exe",
+    "macos": "https://github.com/yunyu697/wisp/releases/download/v1.0.23/wisp-macos-1.0.23.dmg",
+    "linux": "https://github.com/yunyu697/wisp/releases/download/v1.0.23/wisp-linux-x64-1.0.23.AppImage",
+    "android": "https://github.com/yunyu697/wisp/releases/download/v1.0.23/wisp-android-1.0.23.apk"
   }
 }

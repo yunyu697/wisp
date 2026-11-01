@@ -54,8 +54,7 @@ END
 // remains consistent on all systems.
 IDI_APP_ICON            ICON                    "resources\\app_icon.ico"
 
-// 悬浮球贴图（PIL 预渲染，带 alpha 阴影）。
-BALL_PNG                RCDATA                  "resources\\ball.png"
+// 悬浮球不再用贴图：形状形变与柔和投影都在 RenderBall 里用 GDI+ 现画。
 
 
 /////////////////////////////////////////////////////////////////////////////

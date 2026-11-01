@@ -9,10 +9,18 @@ class WispReleaseNotes {
   const WispReleaseNotes._();
 
   /// 当前应用版本（与 pubspec.yaml 的 `version:` 保持一致）。
-  static const String currentVersion = '1.0.22';
+  static const String currentVersion = '1.0.23';
 
   /// 新版本在前，设置页按这个顺序展示。
   static const List<WispReleaseEntry> entries = <WispReleaseEntry>[
+    WispReleaseEntry(version: '1.0.23', changes: <String>[
+      '悬浮球与吸附把手改成同一个形状的连续形变：药丸慢慢变宽、圆角收成正圆，反过来也一样，收尾带一点回弹，不再是两个图形交叉淡入淡出',
+      '去掉悬浮球边缘的第二圈边框：阴影不再来自预渲染贴图，改成按当前尺寸实时绘制',
+      '吸附到屏幕边缘时把手完全贴边，不再留一条缝',
+      '悬浮球常驻置顶；检测到全屏应用（游戏、视频）时自动让位，退出全屏立刻回来',
+      '鼠标离开 1 秒后，用 1 秒慢慢淡到 25% 不透明度；移回来 0.1 秒就恢复不透明，不会闪',
+      'macOS 菜单栏图标按应用图标自己的构图重画（青绿卡片 + 两条白线 + 珊瑚点），深浅色菜单栏都清晰，有新请求时整体变红',
+    ]),
     WispReleaseEntry(version: '1.0.22', changes: <String>[
       '「识别用户名」改成同名才互相可见：设了用户名之后，只显示同名的设备，也只有同名的设备看得到你（以前只有你单方面看不到别人，没设用户名的人照样能看见你）',
       '用户名比对忽略首尾空格与大小写；空对空算同名，设了名字的设备与没设的设备互相隐藏',

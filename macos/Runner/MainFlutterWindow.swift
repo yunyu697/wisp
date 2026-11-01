@@ -48,7 +48,9 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
       statusItem = nil
       return
     }
-    button.image = Self.menuBarImage(alert: false)
+    button.image = Self.menuBarImage()
+    button.imagePosition = .imageOnly
+    button.toolTip = "Wisp — 局域网传输"
 
     let menu = NSMenu()
     let open = NSMenuItem(title: "打开 Wisp", action: #selector(openFromMenuBar), keyEquivalent: "")
@@ -63,24 +65,53 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     statusItem = item
   }
 
-  /// 菜单栏图标：正常态传输圆圈，提醒态叹号 + 红色。
-  /// SF Symbol 天然适配菜单栏明暗；老系统拿应用图标缩尺寸兜底。
-  private static func menuBarImage(alert: Bool) -> NSImage? {
-    if #available(macOS 11.0, *) {
-      let name = alert ? "exclamationmark.circle" : "arrow.up.arrow.down.circle"
-      if let image = NSImage(systemSymbolName: name, accessibilityDescription: "Wisp") {
-        return image
+  /// 菜单栏图标：把应用图标（青绿卡片 + 两条白线 + 珊瑚圆点）压成单色模板版。
+  ///
+  /// 以前用 SF Symbol 的 `arrow.up.arrow.down.circle`：它跟应用图标毫无关系，
+  /// 细线条 + 大留白，18pt 下看着又小又认不出。这里按应用图标自己的构图重画：
+  /// 实心圆角卡片（=那张文件卡）+ 两条挖空的白线 + 右上角独立圆点（=珊瑚点）。
+  /// 模板图交给系统着色，深浅色菜单栏都自动适配，提醒态只需要换 tint。
+  ///
+  /// 用 drawingHandler 而不是预渲染位图：Retina 上按 2x 重新光栅化，
+  /// 不会像「把 1024 缩到 18」那样糊成一团。
+  private static func menuBarImage() -> NSImage {
+    let side: CGFloat = 18
+    let image = NSImage(size: NSSize(width: side, height: side), flipped: true) { _ in
+      // 设计稿按 18×18 画，这里等比缩放（外部若改 side，图形跟着走）。
+      let u = side / 18.0
+
+      // 卡片
+      let card = NSRect(x: 1.15 * u, y: 4.4 * u, width: 11.7 * u, height: 11.8 * u)
+      NSColor.black.setFill()
+      NSBezierPath(roundedRect: card, xRadius: 3.4 * u, yRadius: 3.4 * u).fill()
+
+      // 两条白线 + 右上角圆点：模板图用 alpha 当遮罩，所以这里是"挖空"
+      // （clear 混合），不是画白色——画白色在深色菜单栏里会变成实心块。
+      guard let ctx = NSGraphicsContext.current?.cgContext else { return true }
+      ctx.setBlendMode(.clear)
+      let bars: [(CGFloat, CGFloat, CGFloat)] = [
+        (9.0, 6.9, 1.85),   // (y, 长度, 粗细)
+        (11.95, 4.9, 1.85),
+      ]
+      for (y, length, thick) in bars {
+        let bar = NSRect(x: 3.25 * u, y: y * u, width: length * u, height: thick * u)
+        NSBezierPath(roundedRect: bar, xRadius: thick * u / 2,
+                     yRadius: thick * u / 2).fill()
       }
+      NSBezierPath(ovalIn: NSRect(x: 13.75 * u, y: 0.9 * u,
+                                  width: 3.4 * u, height: 3.4 * u)).fill()
+      ctx.setBlendMode(.normal)
+      return true
     }
-    guard let icon = NSApp.applicationIconImage.copy() as? NSImage else { return nil }
-    icon.size = NSSize(width: 18, height: 18)
-    return icon
+    image.isTemplate = true
+    return image
   }
 
   /// 有新传输请求时菜单栏图标变红提醒（对应 Dart 侧 setTrayFlashing）。
+  /// 图形不变、只换 tint：同一个标志物换个颜色，比换成另一个图标更好认。
   private func setFlashing(_ on: Bool) {
     guard let button = statusItem?.button else { return }
-    button.image = Self.menuBarImage(alert: on)
+    if button.image == nil { button.image = Self.menuBarImage() }
     button.contentTintColor = on ? NSColor.systemRed : nil
   }
 
