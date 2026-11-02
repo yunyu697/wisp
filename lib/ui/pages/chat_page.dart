@@ -391,7 +391,10 @@ class _ChatPageState extends State<ChatPage> {
 
   Widget _bubble(BuildContext context, AppState state, ChatMessage message) {
     final bool outgoing = message.isOutgoing;
-    final double maxWidth = MediaQuery.sizeOf(context).width * 0.72;
+    // 宽窗口上限 560：只按屏宽的 72% 算，2000px 的窗口上气泡会拉成一条
+    // 1400px 的长条，眼睛根本跟不上换行。
+    final double room = MediaQuery.sizeOf(context).width * 0.72;
+    final double maxWidth = room > 560 ? 560 : room;
     final Color textColor = outgoing
         ? Colors.white
         : (Theme.of(context).brightness == Brightness.dark
