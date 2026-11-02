@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
@@ -9,6 +10,7 @@ import '../core/constants.dart';
 import '../core/username_scope.dart';
 import '../core/file_names.dart';
 import '../models/device.dart';
+import '../models/message.dart';
 import '../models/transfer.dart';
 import 'discovery_service.dart';
 import 'settings_service.dart';
@@ -64,6 +66,7 @@ class ReceiverService {
     required this.onProgress,
     required this.onFinished,
     required this.onLog,
+    required this.onMessage,
     this.onRegistered,
   });
 
@@ -72,6 +75,12 @@ class ReceiverService {
   final void Function(TransferSession session) onProgress;
   final void Function(TransferSession session) onFinished;
   final void Function(String message) onLog;
+
+  /// 收到一条文本消息（Wisp 扩展端点）。
+  ///
+  /// 与文件接收完全分离：不经过 [onIncoming] 的"接受/拒绝"确认，
+  /// 也不产生 [TransferSession]。消息就是要像 IM 一样直接落到会话里。
+  final void Function(IncomingMessage message) onMessage;
 
   /// 对方主动来握手（单播 HTTP register）时回调。
   ///
@@ -150,6 +159,9 @@ class ReceiverService {
         case WispProtocol.cancelPath:
           await _handleCancel(request);
           return;
+        case WispProtocol.messagePath:
+          await _handleMessage(request);
+          return;
         default:
           await _json(request, 404, <String, dynamic>{'message': 'not found'});
       }
@@ -168,6 +180,9 @@ class ReceiverService {
         'port': settings.port,
         'protocol': _secure ? 'https' : 'http',
         'download': false,
+        // 能力声明：对端据此决定要不要把「发消息」入口露出来。
+        // 官方 LocalSend 不认识这个字段，忽略即可，不影响互通。
+        'message': true,
         if (settings.hasUsername) 'username': settings.username.trim(),
       };
 
@@ -402,6 +417,92 @@ class ReceiverService {
     }
     request.response.statusCode = 200;
     await request.response.close();
+  }
+
+  /// 文本消息端点（Wisp 扩展，路径见 [WispProtocol.messagePath]）。
+  ///
+  /// 和文件接收的区别是刻意的：
+  /// * **不落盘**——消息只进内存与 SharedPreferences，不写文件；
+  /// * **不询问**——没有"接受/拒绝"弹层，直接进会话，这才是 IM 的手感；
+  /// * **不建传输会话**——`sessions` / `tokens` 那一套是给文件用的。
+  ///
+  /// 只校验证书指纹与用户名范围，**不校验 PIN**。PIN 的语义是"往我磁盘上
+  /// 写文件得先过我这一关"，而消息既不写盘也不需要用户点确认；如果每发一句话
+  /// 都要求输入 PIN，这个功能等于不可用。
+  Future<void> _handleMessage(HttpRequest request) async {
+    final String? body = await _readCapped(request, WispProtocol.maxMessageBytes);
+    if (body == null) {
+      await _json(request, 413, <String, dynamic>{'message': 'message too large'});
+      return;
+    }
+    final Map<String, dynamic>? payload = _decode(body);
+    if (payload == null) {
+      await _json(request, 400, <String, dynamic>{'message': 'invalid body'});
+      return;
+    }
+
+    final Map<String, dynamic> info =
+        (payload['info'] as Map<String, dynamic>?) ?? <String, dynamic>{};
+    final Map<String, dynamic> raw =
+        (payload['message'] as Map<String, dynamic>?) ?? <String, dynamic>{};
+    final String text = (raw['text'] as String?) ?? '';
+    if (text.trim().isEmpty) {
+      await _json(request, 400, <String, dynamic>{'message': 'empty message'});
+      return;
+    }
+    if (text.length > WispProtocol.maxMessageChars) {
+      await _json(request, 413, <String, dynamic>{'message': 'message too large'});
+      return;
+    }
+
+    final String remoteIp = request.connectionInfo?.remoteAddress.address ?? '';
+
+    // 与 prepare-upload 同一道证书闸门（服务端不索取客户端证书，这里恒为
+    // null，保留是为了将来真上 mTLS 时能直接生效）。
+    final bool? certOk =
+        WispTls.certMatchesClaim(request.certificate, info['fingerprint'] as String?);
+    if (certOk == false) {
+      onLog('拒绝 $remoteIp 的消息：证书与它声明的指纹不一致');
+      await _json(request, 403, <String, dynamic>{'message': 'certificate mismatch'});
+      return;
+    }
+
+    final WispDevice sender = WispDevice.fromJson(info, ip: remoteIp);
+    if (!sameUsernameScope(settings.username, sender.username)) {
+      onLog('拒绝 $remoteIp 的消息：用户名不一致'
+          '（本机「${_scopeLabel()}」，对方「${sender.username.trim().isEmpty ? '未设置' : sender.username.trim()}」）');
+      await _json(request, 403, <String, dynamic>{'message': 'username mismatch'});
+      return;
+    }
+
+    // 先交付再回 200：客户端拿到 200 就意味着"这句话已经进了对方的会话"。
+    // 反过来（先回 200 再交付）会让发送端以为成功、而接收端还没落账，
+    // 测试里也是必现的竞态——客户端 drain 完就返回了，服务端那行还没执行。
+    final int? timeMs = (raw['time'] as num?)?.toInt();
+    onMessage(IncomingMessage(
+      id: (raw['id'] as String?) ?? _newId(),
+      text: text,
+      time: timeMs == null
+          ? DateTime.now()
+          : DateTime.fromMillisecondsSinceEpoch(timeMs),
+      sender: sender,
+    ));
+    await _json(request, 200, <String, dynamic>{'ok': true});
+  }
+
+  /// 读请求体，超过 [limit] 字节就放弃（返回 null）。
+  ///
+  /// 不能直接 `utf8.decoder.bind(request).join()`：对端可以用 chunked 编码
+  /// 声明一个假的 Content-Length，或者干脆不声明，join 会一直读到内存爆掉。
+  Future<String?> _readCapped(HttpRequest request, int limit) async {
+    // contentLength 未知时是 -1，比较自然不成立，落到下面的流式计数。
+    if (request.contentLength > limit) return null;
+    final BytesBuilder builder = BytesBuilder(copy: false);
+    await for (final List<int> chunk in request) {
+      builder.add(chunk);
+      if (builder.length > limit) return null;
+    }
+    return utf8.decode(builder.takeBytes(), allowMalformed: true);
   }
 
   Future<Directory> _resolveDirectory() async {

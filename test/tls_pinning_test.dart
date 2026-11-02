@@ -9,6 +9,7 @@ import 'dart:isolate';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wisp/models/device.dart';
 import 'package:wisp/models/transfer.dart';
+import 'package:wisp/models/message.dart';
 import 'package:wisp/services/receiver_service.dart';
 import 'package:wisp/services/sender_service.dart';
 import 'package:wisp/services/settings_service.dart';
@@ -108,6 +109,7 @@ void main() {
       onProgress: (TransferSession session) {},
       onFinished: (TransferSession session) => received.add(session),
       onLog: (String message) => logs.add(message),
+      onMessage: (IncomingMessage message) {},
     );
     await receiver.start();
     addTearDown(receiver.stop);

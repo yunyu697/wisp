@@ -10,6 +10,7 @@ import '../../models/transfer.dart';
 import '../../services/receiver_service.dart';
 import '../../state/app_state.dart';
 import '../pages/history_page.dart';
+import '../pages/messages_page.dart';
 import '../pages/nearby_page.dart';
 import '../pages/send_page.dart';
 import '../pages/settings_page.dart';
@@ -18,7 +19,7 @@ import '../widgets/device_tile.dart';
 import '../widgets/gradient_button.dart';
 import '../widgets/wisp_bottom_nav.dart';
 
-/// 主容器：四个页面 + 磨砂底栏 + 接收请求的拦截层。
+/// 主容器：五个页面 + 磨砂底栏 + 接收请求的拦截层。
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
@@ -30,6 +31,7 @@ class _HomeShellState extends State<HomeShell> {
   final PageController _pageController = PageController();
   int _index = 0;
   int _composeTick = 0;
+  int _unread = 0;
   AppState? _state;
   bool _sheetOpen = false;
 
@@ -95,13 +97,23 @@ class _HomeShellState extends State<HomeShell> {
       });
     }
 
+    // 未读角标：只在数字真的变了才重建，别让传输进度那 100ms 一次的
+    // notifyListeners 把整个外壳也跟着重画。
+    if (state.unreadMessages != _unread) {
+      _unread = state.unreadMessages;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() {});
+      });
+    }
+
     // 有内容进待发清单了（拖拽 / 历史重发）：直接切到发送页。
     // 只在计数变化时翻页，避免每次 notify 都把用户拽回这一页。
+    // 发送页在导航里的位置是 2（附近 / 消息 / 发送 / 记录 / 设置）。
     if (state.composeTick != _composeTick) {
       _composeTick = state.composeTick;
-      if (_index != 1) {
+      if (_index != 2) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && _index != 1) _select(1);
+          if (mounted && _index != 2) _select(2);
         });
       }
     }
@@ -142,6 +154,7 @@ class _HomeShellState extends State<HomeShell> {
       onPageChanged: (int index) => setState(() => _index = index),
       children: const <Widget>[
         NearbyPage(),
+        MessagesPage(),
         SendPage(),
         HistoryPage(),
         SettingsPage(),
@@ -152,7 +165,8 @@ class _HomeShellState extends State<HomeShell> {
     if (!isWideLayout(context)) {
       return Scaffold(
         body: SafeArea(bottom: false, child: pages),
-        bottomNavigationBar: WispBottomNav(index: _index, onChanged: _select),
+        bottomNavigationBar:
+            WispBottomNav(index: _index, onChanged: _select, unread: _unread),
       );
     }
 
@@ -162,7 +176,7 @@ class _HomeShellState extends State<HomeShell> {
     return Scaffold(
       body: Row(
         children: <Widget>[
-          WispNavRail(index: _index, onChanged: _select),
+          WispNavRail(index: _index, onChanged: _select, unread: _unread),
           Expanded(
             child: SafeArea(
               child: Center(

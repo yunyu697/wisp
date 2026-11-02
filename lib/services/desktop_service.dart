@@ -412,6 +412,11 @@ class DesktopService {
   /// 原生层 3 秒后自动收起（ToastLifetimeMs）。
   static const int bubbleCanceled = 3;
 
+  /// 纯通知（收到一条消息）：和 [bubbleCanceled] 是同一套渲染——没有按钮、
+  /// 没有进度条、到点自己收——只是语义不同，所以单独给个名字。
+  /// C++ 侧按数值判断，两个常量必须是同一个值。
+  static const int bubbleInfo = 3;
+
   /// 在悬浮球旁边弹出气泡。mode：0 询问接收 / 1 传输进度 / 2 传输完成。
   static Future<void> showBubble(
     String title,

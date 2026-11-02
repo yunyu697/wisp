@@ -301,6 +301,9 @@ class DiscoveryService {
         // 必须反映实际协议，否则对方会按错的方式连回来。
         'protocol': secure ? 'https' : 'http',
         'download': false,
+        // 能力声明：告诉对端我们支持文本消息（Wisp 扩展端点）。
+        // 官方客户端会忽略这个字段，不影响发现与文件互传。
+        'message': true,
         'announce': announce,
         if (settings.hasUsername) 'username': settings.username.trim(),
       };

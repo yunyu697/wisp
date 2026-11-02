@@ -61,7 +61,7 @@ void main() {
 
   testWidgets('每个标签页的高亮块都完整包住内容', (WidgetTester tester) async {
     usePhone(tester);
-    const List<String> labels = <String>['附近', '发送', '记录', '设置'];
+    const List<String> labels = <String>['附近', '消息', '发送', '记录', '设置'];
 
     for (int i = 0; i < labels.length; i++) {
       await tester.pumpWidget(host(i));
@@ -87,7 +87,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
     final double leftAfter = tester.getRect(pill()).left;
 
-    expect(leftAfter, greaterThan(leftBefore), reason: '切到「记录」后高亮块应该往右滑');
+    expect(leftAfter, greaterThan(leftBefore), reason: '切到第 3 项后高亮块应该往右滑');
   });
 
   testWidgets('golden: 底栏（浅色）', tags: 'golden', (WidgetTester tester) async {

@@ -13,13 +13,20 @@ class WispNavItem {
   final IconData activeIcon;
 }
 
-/// 四个导航项，底栏与侧边栏共用，保证两套导航完全一致。
+/// 五个导航项，底栏与侧边栏共用，保证两套导航完全一致。
+///
+/// 「消息」排在「附近」之后、「发送」之前：发现设备 → 说句话，是 IM 里
+/// 最自然的顺序；文件发送反而是更"重"的动作，排在后面不抢位置。
 const List<WispNavItem> wispNavItems = <WispNavItem>[
   WispNavItem('附近', Icons.radar_rounded, Icons.radar_rounded),
+  WispNavItem('消息', Icons.forum_rounded, Icons.forum_rounded),
   WispNavItem('发送', Icons.arrow_upward_rounded, Icons.arrow_upward_rounded),
   WispNavItem('记录', Icons.history_rounded, Icons.history_rounded),
   WispNavItem('设置', Icons.tune_rounded, Icons.tune_rounded),
 ];
+
+/// 「消息」在导航里的位置，未读角标挂在它上面。
+const int kMessagesNavIndex = 1;
 
 /// 底栏尺寸常量。
 ///
@@ -39,10 +46,18 @@ const double _pillRadius = 16;
 /// 指示块用 AnimatedPositioned 跟随索引，图标颜色同步补间；
 /// 切换时给一次极轻的触感反馈，符合 iOS 的交互预期。
 class WispBottomNav extends StatelessWidget {
-  const WispBottomNav({super.key, required this.index, required this.onChanged});
+  const WispBottomNav({
+    super.key,
+    required this.index,
+    required this.onChanged,
+    this.unread = 0,
+  });
 
   final int index;
   final ValueChanged<int> onChanged;
+
+  /// 「消息」上的未读数，0 表示不显示角标。
+  final int unread;
 
   @override
   Widget build(BuildContext context) {
@@ -97,7 +112,11 @@ class WispBottomNav extends StatelessWidget {
                               HapticFeedback.selectionClick();
                               onChanged(i);
                             },
-                            child: _NavCell(item: wispNavItems[i], selected: selected),
+                            child: _NavCell(
+                              item: wispNavItems[i],
+                              selected: selected,
+                              badge: i == kMessagesNavIndex ? unread : 0,
+                            ),
                           ),
                         );
                       }),
@@ -114,10 +133,11 @@ class WispBottomNav extends StatelessWidget {
 }
 
 class _NavCell extends StatelessWidget {
-  const _NavCell({required this.item, required this.selected});
+  const _NavCell({required this.item, required this.selected, this.badge = 0});
 
   final WispNavItem item;
   final bool selected;
+  final int badge;
 
   @override
   Widget build(BuildContext context) {
@@ -140,7 +160,19 @@ class _NavCell extends StatelessWidget {
                 scale: selected ? 1.0 : 0.92,
                 duration: WispMotion.fast,
                 curve: WispMotion.emphasis,
-                child: Icon(selected ? item.activeIcon : item.icon, size: _iconSize, color: color),
+                child: Stack(
+                  // 角标故意探出图标边界，不能被裁掉。
+                  clipBehavior: Clip.none,
+                  children: <Widget>[
+                    Icon(selected ? item.activeIcon : item.icon, size: _iconSize, color: color),
+                    if (badge > 0)
+                      Positioned(
+                        right: -8,
+                        top: -5,
+                        child: _NavBadge(count: badge),
+                      ),
+                  ],
+                ),
               ),
               const SizedBox(height: _labelGap),
               AnimatedDefaultTextStyle(
@@ -166,16 +198,69 @@ class _NavCell extends StatelessWidget {
   }
 }
 
+/// 未读角标。超过 99 显示 99+，否则数字会撑宽到盖住旁边的图标。
+class _NavBadge extends StatelessWidget {
+  const _NavBadge({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final String label = count > 99 ? '99+' : '$count';
+    return Container(
+      constraints: const BoxConstraints(minWidth: 15),
+      height: 15,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      decoration: BoxDecoration(
+        color: WispColors.danger,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: WispColors.surface(context), width: 1.5),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 9,
+          height: 1,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0,
+        ),
+      ),
+    );
+  }
+}
+
 /// 侧边导航：横屏 / 宽窗口下替代底部栏。
 ///
-/// 竖条放在屏幕左侧，顶部放一个 logo，下面是四个等宽的导航项。
+/// 竖条放在屏幕左侧，顶部放一个 logo，下面是等宽的导航项。
 /// 选中项用 Material 3 的 indicator 高亮（和底栏的渐变胶囊视觉一致：
 /// 都是"淡色块 + 主色图标/文字"），切换逻辑与底栏共用 onChanged。
 class WispNavRail extends StatelessWidget {
-  const WispNavRail({super.key, required this.index, required this.onChanged});
+  const WispNavRail({
+    super.key,
+    required this.index,
+    required this.onChanged,
+    this.unread = 0,
+  });
 
   final int index;
   final ValueChanged<int> onChanged;
+
+  /// 「消息」上的未读数，0 表示不显示角标。
+  final int unread;
+
+  /// 侧栏图标 + 未读角标（只挂在「消息」上）。
+  Widget _railIcon(IconData icon, int i) {
+    if (i != kMessagesNavIndex || unread <= 0) return Icon(icon);
+    return Stack(
+      clipBehavior: Clip.none,
+      children: <Widget>[
+        Icon(icon),
+        Positioned(right: -10, top: -6, child: _NavBadge(count: unread)),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -237,11 +322,11 @@ class WispNavRail extends StatelessWidget {
                   fontSize: 11,
                 ),
                 destinations: <NavigationRailDestination>[
-                  for (final WispNavItem item in wispNavItems)
+                  for (int i = 0; i < wispNavItems.length; i++)
                     NavigationRailDestination(
-                      icon: Icon(item.icon),
-                      selectedIcon: Icon(item.activeIcon),
-                      label: Text(item.label),
+                      icon: _railIcon(wispNavItems[i].icon, i),
+                      selectedIcon: _railIcon(wispNavItems[i].activeIcon, i),
+                      label: Text(wispNavItems[i].label),
                     ),
                 ],
               ),

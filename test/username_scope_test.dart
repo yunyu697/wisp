@@ -15,6 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wisp/core/username_scope.dart';
 import 'package:wisp/services/discovery_service.dart';
 import 'package:wisp/models/transfer.dart';
+import 'package:wisp/models/message.dart';
 import 'package:wisp/services/receiver_service.dart';
 import 'package:wisp/services/settings_service.dart';
 
@@ -61,6 +62,7 @@ Future<({ReceiverService service, String base})> _startReceiver(String username)
     onProgress: (TransferSession session) {},
     onFinished: (TransferSession session) {},
     onLog: (String message) {},
+    onMessage: (IncomingMessage message) {},
   );
   await service.start();
   return (service: service, base: 'http://127.0.0.1:${service.boundPort}');

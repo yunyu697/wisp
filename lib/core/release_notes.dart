@@ -9,10 +9,16 @@ class WispReleaseNotes {
   const WispReleaseNotes._();
 
   /// 当前应用版本（与 pubspec.yaml 的 `version:` 保持一致）。
-  static const String currentVersion = '1.0.26';
+  static const String currentVersion = '1.0.27';
 
   /// 新版本在前，设置页按这个顺序展示。
   static const List<WispReleaseEntry> entries = <WispReleaseEntry>[
+    WispReleaseEntry(version: '1.0.27', changes: <String>[
+      '新增「消息」：像聊天软件那样，把剪贴板里的一段话直接发给附近的设备——不再先存成 .txt 再当文件传过去',
+      '消息不落文件、不进传输记录：对方那边直接以气泡出现在会话里，长按可复制，发失败点一下就能重试',
+      '对方是官方 LocalSend 或旧版 Wisp 时会明确提示「只能收发文件」，不会静默失败',
+      '收到消息时按当前场景在托盘通知卡或悬浮球气泡里提醒，底部导航的「消息」带未读角标',
+    ]),
     WispReleaseEntry(version: '1.0.26', changes: <String>[
       '修复「通过桌面通知或悬浮球接收文件后，再打开主窗口是一片纯黑」：接收过程中连着几次状态刷新会让应用把首页也一起关掉，窗口里什么都不剩；现在只关掉确认弹层，首页始终保留',
     ]),

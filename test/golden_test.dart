@@ -7,9 +7,11 @@ import 'package:provider/provider.dart';
 
 import 'package:wisp/core/design/app_theme.dart';
 import 'package:wisp/models/device.dart';
+import 'package:wisp/models/message.dart';
 import 'package:wisp/models/transfer.dart';
 import 'package:wisp/services/settings_service.dart';
 import 'package:wisp/state/app_state.dart';
+import 'package:wisp/ui/pages/messages_page.dart';
 import 'package:wisp/ui/pages/nearby_page.dart';
 import 'package:wisp/ui/pages/send_page.dart';
 import 'package:wisp/ui/pages/settings_page.dart';
@@ -203,6 +205,72 @@ void main() {
     await tester.pump(const Duration(milliseconds: 900));
     await tester.pump(const Duration(milliseconds: 400));
     await expectLater(find.byType(SendPage), matchesGoldenFile('goldens/13-send-landscape.png'));
+    state.devices.clear();
+  });
+
+  // 消息列表：会话行 + 未读角标 + 在线小绿点。
+  //
+  // 时间用 DateTime.now()：`Format.relative` 对 60 秒内的消息一律显示"刚刚"，
+  // 这样每次渲染都稳定；换成固定日期的话，今天显示"3 天前"、一周后变成
+  // "9 月 1 日"，基准图第二天就红了。
+  testWidgets('golden: 消息列表', (WidgetTester tester) async {
+    usePhone(tester);
+    final DateTime now = DateTime.now();
+    state.acceptDeviceForTest(WispDevice(
+      alias: 'Tyler 的 iPhone',
+      ip: '192.168.1.31',
+      fingerprint: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      kind: DeviceKind.mobile,
+      messageCapable: true,
+    ));
+    state.acceptDeviceForTest(WispDevice(
+      alias: '客厅的 Mac mini',
+      ip: '192.168.1.42',
+      fingerprint: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      kind: DeviceKind.desktop,
+      messageCapable: true,
+    ));
+    state.seedConversationForTest(Conversation(
+      peerKey: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      peerAlias: 'Tyler 的 iPhone',
+      peerIp: '192.168.1.31',
+      unread: 2,
+      messages: <ChatMessage>[
+        ChatMessage(
+          id: 'm1',
+          direction: MessageDirection.outgoing,
+          text: '把刚才那段命令发我一下',
+          time: now.subtract(const Duration(seconds: 20)),
+        ),
+        ChatMessage(
+          id: 'm2',
+          direction: MessageDirection.incoming,
+          text: 'flutter test --exclude-tags golden',
+          time: now.subtract(const Duration(seconds: 5)),
+        ),
+      ],
+    ));
+    state.seedConversationForTest(Conversation(
+      peerKey: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      peerAlias: '客厅的 Mac mini',
+      peerIp: '192.168.1.42',
+      messages: <ChatMessage>[
+        ChatMessage(
+          id: 'm3',
+          direction: MessageDirection.incoming,
+          text: '收到，我这边已经跑起来了',
+          time: now.subtract(const Duration(seconds: 30)),
+        ),
+      ],
+    ));
+
+    await tester.pumpWidget(host(const MessagesPage()));
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.pump(const Duration(milliseconds: 400));
+    await expectLater(find.byType(MessagesPage), matchesGoldenFile('goldens/16-messages.png'));
+
+    // 共用一个 state，用完清空，避免污染后面的用例。
+    state.conversations.clear();
     state.devices.clear();
   });
 

@@ -1,11 +1,11 @@
 {
-  "version": "1.0.26",
-  "notes": "修复「通过桌面通知或悬浮球接收文件后，再打开主窗口是一片纯黑」：接收过程中连着几次状态刷新会让应用把首页也一起关掉，窗口里什么都不剩；现在只关掉确认弹层，首页始终保留。",
-  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v1.0.26/wisp-windows-x64-1.0.26-setup.exe",
+  "version": "1.0.27",
+  "notes": "新增「消息」：像聊天软件那样把剪贴板里的一段话直接发给附近的设备，不再先存成 .txt 再传文件。消息不落文件、不进传输记录，对方那边直接以气泡出现在会话里；对方是官方 LocalSend 或旧版 Wisp 时会明确提示只能收发文件。",
+  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v1.0.27/wisp-windows-x64-1.0.27-setup.exe",
   "downloads": {
-    "windows": "https://github.com/yunyu697/wisp/releases/download/v1.0.26/wisp-windows-x64-1.0.26-setup.exe",
-    "macos": "https://github.com/yunyu697/wisp/releases/download/v1.0.26/wisp-macos-1.0.26.dmg",
-    "linux": "https://github.com/yunyu697/wisp/releases/download/v1.0.26/wisp-linux-x64-1.0.26.AppImage",
-    "android": "https://github.com/yunyu697/wisp/releases/download/v1.0.26/wisp-android-1.0.26.apk"
+    "windows": "https://github.com/yunyu697/wisp/releases/download/v1.0.27/wisp-windows-x64-1.0.27-setup.exe",
+    "macos": "https://github.com/yunyu697/wisp/releases/download/v1.0.27/wisp-macos-1.0.27.dmg",
+    "linux": "https://github.com/yunyu697/wisp/releases/download/v1.0.27/wisp-linux-x64-1.0.27.AppImage",
+    "android": "https://github.com/yunyu697/wisp/releases/download/v1.0.27/wisp-android-1.0.27.apk"
   }
 }

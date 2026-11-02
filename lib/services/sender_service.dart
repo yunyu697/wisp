@@ -208,6 +208,56 @@ class SenderService {
     }
   }
 
+  /// 发送一条文本消息（Wisp 扩展端点，不落文件）。
+  ///
+  /// 失败语义和文件传输不同，调用方要能区分：
+  /// * 404 / 405 —— 对端不是 Wisp，或版本太旧，没有这个端点；
+  /// * 403 —— 用户名范围不一致，或对方明确拒绝；
+  /// * 413 —— 文本太长。
+  Future<void> sendMessage(
+    WispDevice device, {
+    required String id,
+    required String text,
+    int? timeMs,
+  }) async {
+    final HttpClient client = _client(peer: device);
+    try {
+      final Uri uri = Uri.parse('${device.baseUrl}${WispProtocol.messagePath}');
+      final HttpClientRequest request = await client.postUrl(uri);
+      request.headers.contentType = ContentType.json;
+      request.write(jsonEncode(<String, dynamic>{
+        'info': _selfInfo,
+        'message': <String, dynamic>{
+          'id': id,
+          'text': text,
+          'time': timeMs ?? DateTime.now().millisecondsSinceEpoch,
+        },
+      }));
+
+      final HttpClientResponse response = await request.close();
+      await response.drain<void>();
+      final int status = response.statusCode;
+      if (status == 200 || status == 204) return;
+      if (status == 404 || status == 405) {
+        throw SendFailure('对方不是 Wisp（或版本太旧），只能收发文件', statusCode: status);
+      }
+      // 403 / 413 用消息语境的说法：复用 _messageFor 会得到"对方拒绝了这次
+      // 传输""文件校验失败"，放在一条聊天消息上完全对不上。
+      if (status == 403) {
+        throw SendFailure('对方拒收这条消息（可能用户名不一致）', statusCode: status);
+      }
+      if (status == 413) {
+        throw SendFailure('内容太长，对方拒收', statusCode: status);
+      }
+      throw SendFailure(_messageFor(status), statusCode: status);
+    } on TlsException {
+      // 指纹对不上时 dart:io 抛的就是这个：别让用户只看到一句 Handshake failed。
+      throw SendFailure('对端证书与它声明的指纹不一致，已中止连接（可能有人劫持）');
+    } finally {
+      client.close(force: false);
+    }
+  }
+
   String _messageFor(int status) {
     switch (status) {
       case 401:
@@ -216,6 +266,8 @@ class SenderService {
         return '对方拒绝了这次传输';
       case 409:
         return '对方正在接收其他设备的文件';
+      case 413:
+        return '内容太长，对方拒收';
       case 422:
         return '文件校验失败，可能传输中损坏';
       case 429:

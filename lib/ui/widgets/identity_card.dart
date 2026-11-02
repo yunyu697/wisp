@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/design/app_colors.dart';
+import '../../core/release_notes.dart';
 
 import '../../state/app_state.dart';
 
@@ -91,7 +92,8 @@ class IdentityCard extends StatelessWidget {
                   tint: WispColors.teal,
                 ),
               Text(
-                'v1.0',
+                // 以前写死 'v1.0'，发到 1.0.27 了卡片上还印着 v1.0。
+                'v${WispReleaseNotes.currentVersion}',
                 style: Theme.of(context).textTheme.labelMedium,
               ),
             ],

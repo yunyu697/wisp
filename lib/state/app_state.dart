@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../core/constants.dart';
@@ -10,11 +11,13 @@ import '../core/username_scope.dart';
 import '../core/utils/format.dart';
 import '../core/utils/pickers.dart';
 import '../models/device.dart';
+import '../models/message.dart';
 import '../models/network.dart';
 import '../models/transfer.dart';
 import '../services/desktop_service.dart';
 import '../services/discovery_service.dart';
 import '../services/history_service.dart';
+import '../services/message_service.dart';
 import '../services/notification_router.dart';
 import '../services/receiver_service.dart';
 import '../services/sender_service.dart';
@@ -32,6 +35,7 @@ class AppState extends ChangeNotifier {
 
   final SettingsService _settingsService = SettingsService();
   final HistoryService _historyService = HistoryService();
+  final MessageService _messageService = MessageService();
 
   WispSettings settings = WispSettings.defaults();
   bool ready = false;
@@ -51,6 +55,20 @@ class AppState extends ChangeNotifier {
   final List<TransferFile> draft = <TransferFile>[];
   final List<TransferSession> sessions = <TransferSession>[];
   final List<TransferRecord> history = <TransferRecord>[];
+
+  /// 与各台设备的聊天会话，按最近一条消息倒序。
+  ///
+  /// 和 [history] 是两份完全独立的账：history 记"传过什么文件"，
+  /// conversations 记"和谁说过什么话"。消息不落文件，只在这里和
+  /// [MessageService] 的本地存储里。
+  final List<Conversation> conversations = <Conversation>[];
+
+  /// 当前打开的会话（[Conversation.peerKey]）。null 表示不在聊天页。
+  String? activeChatKey;
+
+  /// 所有会话的未读总数，底栏「消息」上的角标用它。
+  int get unreadMessages =>
+      conversations.fold(0, (int sum, Conversation c) => sum + c.unread);
 
   /// 每准备好一批待发内容就 +1（拖拽进来、历史里重发），外壳据此切到发送页。
   /// 只在变化时翻页，避免每次 notify 都把用户拽回这一页。
@@ -135,6 +153,9 @@ class AppState extends ChangeNotifier {
     history
       ..clear()
       ..addAll(await _historyService.load());
+    conversations
+      ..clear()
+      ..addAll(await _messageService.load());
     interfaces = await NetworkInterfaceInfo.list();
     localIp = await DiscoveryService.resolveLocalIp(settings.networkInterface);
     // 证书指纹：设置页要显示，两端对指纹时用。
@@ -185,6 +206,7 @@ class AppState extends ChangeNotifier {
       onLog: (String message) => _log(message),
       // 对方主动握手时也要进设备列表——这是发现官方客户端的唯一途径。
       onRegistered: _upsertDevice,
+      onMessage: _handleIncomingMessage,
     );
 
     final DiscoveryService discovery = DiscoveryService(
@@ -739,6 +761,246 @@ class AppState extends ChangeNotifier {
         (TransferSession s) => s != session && s.status.isFinished);
     unawaited(_historyService.save(history));
     notifyListeners();
+  }
+
+  // ---------------------------------------------------------------------------
+  // 消息（IM 式聊天，消息本身不落文件）
+  // ---------------------------------------------------------------------------
+
+  Conversation? conversationOf(String peerKey) {
+    for (final Conversation conversation in conversations) {
+      if (conversation.peerKey == peerKey) return conversation;
+    }
+    return null;
+  }
+
+  /// 会话对应的设备（先按指纹找，再退回 IP）。
+  ///
+  /// 找不到说明对端已经离线：界面据此把输入框置灰，而不是让用户敲完一大段
+  /// 话再收到一句"连接失败"。
+  WispDevice? deviceForConversation(Conversation conversation) {
+    for (final WispDevice device in devices) {
+      if (device.key == conversation.peerKey) return device;
+    }
+    for (final WispDevice device in devices) {
+      if (device.ip == conversation.peerIp) return device;
+    }
+    return null;
+  }
+
+  /// 打开（没有就新建）与某台设备的会话，并清掉未读。
+  Conversation openChat(WispDevice device) {
+    final Conversation conversation =
+        _ensureConversation(device.key, device.alias, device.ip);
+    enterChat(conversation.peerKey);
+    return conversation;
+  }
+
+  /// 进入聊天页：把这条会话标记为"正在看"。
+  ///
+  /// 之后到达的消息不再计未读、也不再弹桌面提醒——用户正盯着它看，
+  /// 再提醒一次就是打扰。
+  void enterChat(String peerKey) {
+    activeChatKey = peerKey;
+    final Conversation? conversation = conversationOf(peerKey);
+    if (conversation != null && conversation.unread > 0) {
+      conversation.unread = 0;
+    }
+    notifyListeners();
+  }
+
+  /// 离开聊天页。之后到达的消息重新计未读。
+  void leaveChat() {
+    activeChatKey = null;
+  }
+
+  void deleteConversation(String peerKey) {
+    conversations.removeWhere((Conversation c) => c.peerKey == peerKey);
+    if (activeChatKey == peerKey) activeChatKey = null;
+    unawaited(_messageService.save(conversations));
+    notifyListeners();
+  }
+
+  Conversation _ensureConversation(String key, String alias, String ip) {
+    final Conversation? existing = conversationOf(key);
+    if (existing != null) {
+      existing.peerAlias = alias;
+      existing.peerIp = ip;
+      return existing;
+    }
+    final Conversation fresh = Conversation(peerKey: key, peerAlias: alias, peerIp: ip);
+    conversations.insert(0, fresh);
+    return fresh;
+  }
+
+  void _sortConversations() {
+    conversations.sort((Conversation a, Conversation b) => b.lastTime.compareTo(a.lastTime));
+  }
+
+  /// 读剪贴板里的纯文本，没有就返回 null。
+  Future<String?> clipboardText() async {
+    try {
+      final ClipboardData? data = await Clipboard.getData(Clipboard.kTextPlain);
+      final String? text = data?.text;
+      if (text == null || text.trim().isEmpty) return null;
+      return text;
+    } catch (_) {
+      // 个别平台（无头 Linux、被策略禁用的会话）读剪贴板会抛异常。
+      return null;
+    }
+  }
+
+  /// 把当前剪贴板内容作为一条消息发出去。
+  Future<String?> sendClipboard(WispDevice device) async {
+    final String? text = await clipboardText();
+    if (text == null) return '剪贴板里没有文字';
+    return sendText(device, text);
+  }
+
+  /// 发送一条文本消息。返回错误文案（null 表示已送达）。
+  ///
+  /// 与 [sendTo] 的区别是根本性的：这里不建 [TransferSession]、不进
+  /// [draft]、不写传输历史、不落任何文件——消息就是一段话，直接进会话。
+  Future<String?> sendText(WispDevice device, String text) async {
+    final String value = text.trim();
+    if (value.isEmpty) return '没有可发送的内容';
+    if (!device.messageCapable) {
+      return '${device.alias} 不是 Wisp（或版本太旧），只能收发文件';
+    }
+    if (value.length > WispProtocol.maxMessageChars) {
+      return '内容太长，最多 ${WispProtocol.maxMessageChars ~/ 1024}K 字符';
+    }
+
+    final Conversation conversation =
+        _ensureConversation(device.key, device.alias, device.ip);
+    final DateTime now = DateTime.now();
+    final ChatMessage message = ChatMessage(
+      id: '${now.microsecondsSinceEpoch.toRadixString(16)}-${_messageSeq++}',
+      direction: MessageDirection.outgoing,
+      text: value,
+      time: now,
+      status: MessageStatus.sending,
+    );
+    conversation.add(message);
+    _sortConversations();
+    notifyListeners();
+    return _deliver(device, message);
+  }
+
+  /// 重发一条失败的消息（气泡上点一下就走这里）。
+  Future<String?> resendMessage(WispDevice device, ChatMessage message) {
+    if (message.status == MessageStatus.sending) return Future<String?>.value();
+    return _deliver(device, message);
+  }
+
+  /// 真正投递：更新状态 → 发请求 → 落盘。
+  ///
+  /// 发送中/成功/失败都只改这一条消息的 [MessageStatus]，不动列表顺序——
+  /// 重发一条两小时前的消息，它应该还在原来的位置，而不是跳到最底下。
+  Future<String?> _deliver(WispDevice device, ChatMessage message) async {
+    message.status = MessageStatus.sending;
+    message.error = null;
+    notifyListeners();
+
+    String? error;
+    try {
+      await _sender().sendMessage(
+        device,
+        id: message.id,
+        text: message.text,
+        timeMs: message.time.millisecondsSinceEpoch,
+      );
+      message.status = MessageStatus.sent;
+      message.error = null;
+    } on SendFailure catch (e) {
+      message.status = MessageStatus.failed;
+      message.error = e.message;
+      error = e.message;
+    } catch (e) {
+      message.status = MessageStatus.failed;
+      message.error = '$e';
+      error = '发送失败，请确认双方在同一网络';
+    } finally {
+      unawaited(_messageService.save(conversations));
+      notifyListeners();
+    }
+    return error;
+  }
+
+  /// 消息 id 的自增后缀：同一毫秒内连发两条时，光靠时间戳会撞 id。
+  int _messageSeq = 0;
+
+  /// 收到一条消息：入会话、计未读、必要时在桌面上提醒一下。
+  void _handleIncomingMessage(IncomingMessage message) {
+    // 能发消息过来，说明对方此刻可达：并进设备列表，用户可以直接回。
+    _upsertDevice(message.sender);
+
+    final Conversation conversation = _ensureConversation(
+      message.sender.key,
+      message.sender.alias,
+      message.sender.ip,
+    );
+    conversation.add(ChatMessage(
+      id: message.id,
+      direction: MessageDirection.incoming,
+      text: message.text,
+      time: message.time,
+    ));
+    // 聊天页正开着这条会话、而且窗口真的在用户眼前：不记未读也不弹桌面。
+    final bool focused =
+        activeChatKey == conversation.peerKey && mainWindowVisible;
+    if (!focused) conversation.unread += 1;
+    _sortConversations();
+    unawaited(_messageService.save(conversations));
+    notifyListeners();
+    if (!focused) unawaited(_notifyDesktopMessage(message));
+  }
+
+  /// 供测试直接喂一条入站消息，走和网络回调完全一样的处理逻辑。
+  @visibleForTesting
+  void receiveMessageForTest(IncomingMessage message) => _handleIncomingMessage(message);
+
+  /// 供测试/截图直接灌一段会话历史。
+  ///
+  /// 刻意**不**走 [_handleIncomingMessage]：那条路径会弹桌面提醒、还会落盘，
+  /// 在 widget 测试里既不想要一条 150ms 的重试定时器，也不需要写 SharedPreferences。
+  @visibleForTesting
+  void seedConversationForTest(Conversation conversation) {
+    conversations.removeWhere((Conversation c) => c.peerKey == conversation.peerKey);
+    conversations.add(conversation);
+    _sortConversations();
+    notifyListeners();
+  }
+
+  /// 桌面提醒：窗口不在眼前时弹一条纯通知（没有按钮，到点自己收）。
+  ///
+  /// 刻意不点托盘闪烁：消息不是"等你决定"的事，闪到用户点开才停反而烦人。
+  Future<void> _notifyDesktopMessage(IncomingMessage message) async {
+    // 正在传文件时一律不弹：那条流程的气泡/卡片上有「接收」「打开目录」这类
+    // 按钮，被一条消息顶掉就等于让用户点不到。消息本身已经进了会话并计了
+    // 未读，等用户回来再看不会丢。
+    if (sessions.any((TransferSession s) => s.status.isRunning)) return;
+
+    final DesktopWindowState state = await DesktopService.windowState();
+    final NotificationSurface surface = decideIncomingSurface(state);
+    if (surface == NotificationSurface.inApp) return;
+    final bool onBall = useBallFlow(surface);
+    // 还有文件流程挂在桌面上（已确认、正在收）时同样不抢它的气泡。
+    if (onBall && incoming != null) return;
+    if (onBall) await DesktopService.showBallAlert();
+    await _desktopNotice(
+      onBall: onBall,
+      title: message.sender.alias,
+      body: _messagePreview(message.text),
+      mode: DesktopService.bubbleInfo,
+    );
+  }
+
+  /// 桌面通知里那一行摘要：压掉换行、截断。
+  String _messagePreview(String text) {
+    final String flat = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (flat.length <= 80) return flat;
+    return '${flat.substring(0, 80)}…';
   }
 
   // ---------------------------------------------------------------------------

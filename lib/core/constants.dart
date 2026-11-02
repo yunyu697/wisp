@@ -20,8 +20,25 @@ class WispProtocol {
   static const String cancelPath = '/api/localsend/v2/cancel';
   static const String infoPath = '/api/localsend/v2/info';
 
+  /// 文本消息端点（Wisp 扩展，官方 LocalSend 没有这个概念）。
+  ///
+  /// 刻意放在 `wisp` 命名空间而不是 `localsend` 下：这条路径不属于协议
+  /// v2.2，塞进别人的命名空间里只会让"兼容 LocalSend"这句话变得含糊。
+  /// 对端是官方客户端时会直接 404，发送端据此给出"对方不支持发消息"。
+  static const String messagePath = '/api/wisp/v1/message';
+
   /// 单条消息上限，防止异常报文撑爆内存。
   static const int maxDatagramBytes = 64 * 1024;
+
+  /// 一条文本消息最多多少字符。
+  ///
+  /// 剪贴板里常见的都是几 KB 的代码片段或地址；给到 32K 字符（UTF-8 下
+  /// 最多 ~128 KB 字节）足够覆盖长日志，又不至于让一次 POST 变成文件传输。
+  static const int maxMessageChars = 32 * 1024;
+
+  /// 消息请求体的字节上限。字符数够了但字节数可能翻四倍（全中文），
+  /// 读取前先按 Content-Length 挡一道，避免把超大 body 全读进内存。
+  static const int maxMessageBytes = 256 * 1024;
 
   /// 文件分块大小：1 MiB 是吞吐与内存占用的折中点。
   static const int chunkSize = 1024 * 1024;
