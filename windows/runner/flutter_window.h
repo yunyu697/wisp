@@ -253,7 +253,11 @@ class FlutterWindow : public Win32Window {
   void ShowBubble(const std::wstring& title, const std::wstring& body, int mode,
                   const std::wstring& progress);
   void UpdateBubble(const std::wstring& body, int mode, const std::wstring& progress);
-  void HideBubble();
+  /// 收起气泡。
+  ///
+  /// `animate = false` 是"立刻消失"，用在**恢复主窗口之前**：用户已经回到主窗口，
+  /// 没必要再让一个置顶的分层窗口在它上面演退场动画。
+  void HideBubble(bool animate = true);
   void CreateBubbleWindow();
   void DestroyBubbleWindow();
   void RenderBubble();

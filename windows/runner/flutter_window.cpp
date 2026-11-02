@@ -2851,7 +2851,7 @@ void FlutterWindow::UpdateBubble(const std::wstring& body, int mode,
                                    ToastLifetimeMs(mode), nullptr);
 }
 
-void FlutterWindow::HideBubble() {
+void FlutterWindow::HideBubble(bool animate) {
   if (bubble_window_ == nullptr) return;
   KillTimer(bubble_window_, kBubbleTimeoutTimerId);
   bubble_timeout_timer_ = 0;
@@ -2859,7 +2859,7 @@ void FlutterWindow::HideBubble() {
   const bool was_active = bubble_active_;
   bubble_active_ = false;
   bubble_drawn_ = false;
-  if (!was_active || !IsWindowVisible(bubble_window_)) {
+  if (!animate || !was_active || !IsWindowVisible(bubble_window_)) {
     // 本来就没显示：不用演退场，直接收掉。
     KillTimer(bubble_window_, kBubbleAnimTimerId);
     bubble_anim_timer_ = 0;
@@ -2985,6 +2985,10 @@ void FlutterWindow::InvokeDart(const std::string& method, flutter::EncodableMap 
 void FlutterWindow::ForceMainWindowRepaint() {
   HWND handle = GetHandle();
   if (handle == nullptr) return;
+  // 窗口不可见时不做重绘：对一张没人看的表面 ForceRedraw 没有意义，
+  // 而且 WM_ACTIVATE 在窗口藏起来时照样会来（见下面那段注释），
+  // 不判可见性就会在收托盘期间白跑一轮重绘。
+  if (!IsWindowVisible(handle) || IsIconic(handle)) return;
   // 隐藏置顶的桌面浮层（通知卡/气泡）会让 DWM 把它们原先占的那块区域重新
   // 合成一遍，而 Flutter(Impeller) 的交换链在那块区域可能还是空帧——
   // 用户看到的就是"通知出现后再打开主窗口，主窗口变黑"。
@@ -3007,6 +3011,8 @@ void FlutterWindow::ForceMainWindowRepaint() {
 void FlutterWindow::ScheduleRestoreRedraws() {
   HWND handle = GetHandle();
   if (handle == nullptr) return;
+  // 同上：窗口没显示就没必要补绘。
+  if (!IsWindowVisible(handle) || IsIconic(handle)) return;
   KillTimer(handle, kRestoreRedrawTimerId);
   restore_redraw_step_ = 0;
   restore_redraw_timer_ = SetTimer(handle, kRestoreRedrawTimerId, 60, nullptr);
@@ -3032,14 +3038,16 @@ void FlutterWindow::RestoreWindow() {
   if (handle == nullptr) {
     return;
   }
+  // 先把桌面浮层收干净，再把主窗口显示出来：用户已经回到主窗口，
+  // 让一个置顶的分层窗口继续在它上面演退场动画没有意义。
+  SetTrayFlashing(false);
+  HideToast();
+  HideBubble(/*animate=*/false);
   ShowWindow(handle, SW_RESTORE);
   BringWindowToTop(handle);
   SetForegroundWindow(handle);
   // 用户回到主窗口：桌面上的提醒全部退场，后续进度/完成也改由主窗口呈现，
   // Dart 侧收到 onWindowRestored 后会停止推进通知流程。
-  SetTrayFlashing(false);
-  HideToast();
-  HideBubble();
   // Impeller 从隐藏态恢复时交换链还停留在黑帧，必须强制重绘。
   // 这里不赌单次时机：连着重绘若干次，覆盖表面重建的整个过程。
   ForceMainWindowRepaint();
@@ -3127,13 +3135,20 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
 
   // 主窗口重新获得焦点（点任务栏、Alt+Tab、点桌面通知的空白处…）时，
   // 桌面提醒必须立刻退场，改由应用内弹层接管（规则 2/5 的"同时关闭"）。
-  if (message == WM_ACTIVATE && LOWORD(wparam) != WA_INACTIVE) {
+  //
+  // 前提是"用户真的回到了主窗口"。窗口还藏着的也会收到 WM_ACTIVATE——系统在
+  // 前台窗口被隐藏后会把激活权还回同一个线程，这条消息不带任何"用户回来了"
+  // 的含义。不判可见性的话，收托盘期间一弹气泡就会被自己收掉，用户根本
+  // 没机会点"接收"。
+  if (message == WM_ACTIVATE && LOWORD(wparam) != WA_INACTIVE &&
+      IsWindowVisible(hwnd) && !IsIconic(hwnd)) {
     if ((toast_window_ != nullptr && IsWindowVisible(toast_window_)) ||
         (bubble_window_ != nullptr && IsWindowVisible(bubble_window_))) {
       WispDbgLog("WM_ACTIVATE: desktop surfaces retreat");
       SetTrayFlashing(false);
       HideToast();
-      HideBubble();
+      // 主窗口已经在前台了，浮层立刻消失，不演退场动画。
+      HideBubble(/*animate=*/false);
       // 收起置顶浮层会让 DWM 重合成那块区域，主窗口可能出现黑块，
       // 紧接着连着重绘几次把黑块刷掉。
       ForceMainWindowRepaint();

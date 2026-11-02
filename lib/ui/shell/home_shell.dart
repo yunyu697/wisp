@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
@@ -60,12 +61,25 @@ class _HomeShellState extends State<HomeShell> {
     }
 
     // 请求在别处（悬浮球气泡/系统通知）被处理掉了：把还开着的确认弹层收掉。
-    // 弹层自己的"接收/拒绝"按钮会先 pop 再改状态，这里的 _sheetOpen 守卫
-    // 保证不会重复 pop。
+    //
+    // 这里有两条**必须**遵守的约束，否则会把整个应用 pop 空（黑屏）：
+    //
+    // 1. 标志必须**当场**置 false，不能等 await 返回。
+    //    `_openIncoming` 要等 showModalBottomSheet 的 Future 完成才把 _sheetOpen
+    //    置回 false，而一次接收流程里 notifyListeners 会连着来好几趟
+    //    （清 incoming、开传输、第一帧进度…），每一趟都看到 _sheetOpen==true
+    //    就会调度好几次 pop。
+    // 2. pop 之前必须确认"还有东西可 pop"。
+    //    第一次 pop 关掉弹层后 canPop 就变成 false（只剩 home 这一条路由），
+    //    第二次 pop 会把 home 也弹掉：Navigator 空了，框架什么都不画，
+    //    窗口客户区整块纯黑，而且再也回不来。
     if (state.incoming == null && _sheetOpen) {
+      _sheetOpen = false;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_sheetOpen) return;
-        Navigator.of(context).pop();
+        if (!mounted) return;
+        final NavigatorState nav = Navigator.of(context);
+        if (!nav.canPop()) return;
+        nav.pop();
       });
     }
 
