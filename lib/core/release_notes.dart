@@ -9,10 +9,13 @@ class WispReleaseNotes {
   const WispReleaseNotes._();
 
   /// 当前应用版本（与 pubspec.yaml 的 `version:` 保持一致）。
-  static const String currentVersion = '1.0.24';
+  static const String currentVersion = '1.0.25';
 
   /// 新版本在前，设置页按这个顺序展示。
   static const List<WispReleaseEntry> entries = <WispReleaseEntry>[
+    WispReleaseEntry(version: '1.0.25', changes: <String>[
+      'Windows 新增 MSI 安装包，方便企业用 Intune、SCCM 或组策略批量部署，也支持命令行静默安装；它和原来的 setup.exe 装的是同一份程序，任选其一即可',
+    ]),
     WispReleaseEntry(version: '1.0.24', changes: <String>[
       '新增「静默启动」：开机自启时只在托盘里待着，不弹主窗口，需要时从托盘或悬浮球叫回来',
       '主窗口记住上次的位置和大小，下次启动原样恢复；第一次安装按竖屏比例在屏幕中间打开',
