@@ -1,11 +1,11 @@
 {
-  "version": "1.0.25",
-  "notes": "Windows 新增 MSI 安装包，方便企业用 Intune、SCCM 或组策略批量部署，也支持命令行静默安装。它和原来的 setup.exe 装的是同一份程序，任选其一即可。",
-  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v1.0.25/wisp-windows-x64-1.0.25-setup.exe",
+  "version": "1.0.26",
+  "notes": "修复「通过桌面通知或悬浮球接收文件后，再打开主窗口是一片纯黑」：接收过程中连着几次状态刷新会让应用把首页也一起关掉，窗口里什么都不剩；现在只关掉确认弹层，首页始终保留。",
+  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v1.0.26/wisp-windows-x64-1.0.26-setup.exe",
   "downloads": {
-    "windows": "https://github.com/yunyu697/wisp/releases/download/v1.0.25/wisp-windows-x64-1.0.25-setup.exe",
-    "macos": "https://github.com/yunyu697/wisp/releases/download/v1.0.25/wisp-macos-1.0.25.dmg",
-    "linux": "https://github.com/yunyu697/wisp/releases/download/v1.0.25/wisp-linux-x64-1.0.25.AppImage",
-    "android": "https://github.com/yunyu697/wisp/releases/download/v1.0.25/wisp-android-1.0.25.apk"
+    "windows": "https://github.com/yunyu697/wisp/releases/download/v1.0.26/wisp-windows-x64-1.0.26-setup.exe",
+    "macos": "https://github.com/yunyu697/wisp/releases/download/v1.0.26/wisp-macos-1.0.26.dmg",
+    "linux": "https://github.com/yunyu697/wisp/releases/download/v1.0.26/wisp-linux-x64-1.0.26.AppImage",
+    "android": "https://github.com/yunyu697/wisp/releases/download/v1.0.26/wisp-android-1.0.26.apk"
   }
 }

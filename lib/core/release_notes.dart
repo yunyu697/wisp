@@ -9,10 +9,13 @@ class WispReleaseNotes {
   const WispReleaseNotes._();
 
   /// 当前应用版本（与 pubspec.yaml 的 `version:` 保持一致）。
-  static const String currentVersion = '1.0.25';
+  static const String currentVersion = '1.0.26';
 
   /// 新版本在前，设置页按这个顺序展示。
   static const List<WispReleaseEntry> entries = <WispReleaseEntry>[
+    WispReleaseEntry(version: '1.0.26', changes: <String>[
+      '修复「通过桌面通知或悬浮球接收文件后，再打开主窗口是一片纯黑」：接收过程中连着几次状态刷新会让应用把首页也一起关掉，窗口里什么都不剩；现在只关掉确认弹层，首页始终保留',
+    ]),
     WispReleaseEntry(version: '1.0.25', changes: <String>[
       'Windows 新增 MSI 安装包，方便企业用 Intune、SCCM 或组策略批量部署，也支持命令行静默安装；它和原来的 setup.exe 装的是同一份程序，任选其一即可',
     ]),
