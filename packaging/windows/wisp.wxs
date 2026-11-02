@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Wisp Windows MSI (WiX Toolset v4+ schema).
+
+  CI 用法（见 .github/workflows/release.yml）：
+    wix build packaging/windows/wisp.wxs ^
+      -arch x64 ^
+      -d AppVersion=1.0.24 ^
+      -d SourceDir=build\windows\x64\runner\Release ^
+      -o wisp-windows-x64-1.0.24.msi
+
+  为什么除了 Inno Setup 的 setup.exe 还要 MSI：
+    · 企业环境用 Intune / SCCM / GPO 批量部署只吃 MSI（或需要 .msi 才能做
+      补丁与卸载策略），exe 安装包在那里要绕一圈包一层；
+    · msiexec 原生支持静默安装与日志（/qn /l*v），排障比 exe 干净。
+
+  两种形态并存，互不替代：客户端的一键更新继续走 setup.exe（见
+  lib/services/update_installer.dart，只放行 .exe），MSI 只面向人工/批量部署。
+
+  注意：这里**不用** WixUI 扩展，保持零扩展依赖 —— 少一个 CI 环节就少一个
+  失败点。双击安装会走 Windows Installer 的默认进度界面，静默安装用
+  `msiexec /i wisp-windows-x64-<v>.msi /qn`。
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <!--
+    UpgradeCode 一经发布就不能改：MSI 靠它认出"这是同一个产品的另一个版本"，
+    从而做升级安装（MajorUpgrade）而不是并存两份。改了等于换了一个产品，
+    老版本不会被替换，用户会看到两个 Wisp。
+  -->
+  <Package Name="Wisp"
+           Manufacturer="YuMEHa"
+           Version="$(var.AppVersion)"
+           UpgradeCode="B3D8E7C1-4A52-4F0E-9C6D-7E2A5F1B8D34"
+           Language="1033"
+           Scope="perMachine"
+           Compressed="yes">
+
+    <SummaryInformation Description="Wisp - LAN file transfer, LocalSend compatible"
+                        Manufacturer="YuMEHa" />
+
+    <!-- 装新版本时先卸掉旧版本；降级要明确拒绝，否则文件会新旧混在一起。 -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Wisp is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/yunyu697/wisp" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+
+    <!-- 用 exe 自己的图标做"应用和功能"里的图标，省一个 .ico 资源。 -->
+    <Icon Id="WispIcon" SourceFile="$(var.SourceDir)\wisp.exe" />
+    <Property Id="ARPPRODUCTICON" Value="WispIcon" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Wisp">
+        <!--
+          wisp.exe 单独成组件：它是 Files 收割的排除项（见下面 Feature 里的 Exclude），
+          组件里只放这一个文件，KeyPath 就是 exe 本身。
+        -->
+        <Component Id="MainExecutable" Guid="*">
+          <File Id="WispExe" Source="$(var.SourceDir)\wisp.exe" KeyPath="yes" />
+        </Component>
+
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="Wisp" />
+    </StandardDirectory>
+
+    <!--
+      开始菜单快捷方式单独成组件，KeyPath 用 HKCU 注册表值而不是 exe。
+      这不是随便写的，是 ICE43 / ICE57 / ICE64 三条校验逼出来的写法：
+        · 非广告式快捷方式的 KeyPath 必须是 HKCU 注册表键（ICE43）；
+        · 组件里不能既有用户配置目录下的数据、又有 per-machine 的 KeyPath（ICE57）；
+        · 开始菜单这个目录建了就得登记删除，否则卸载后留下空文件夹（ICE64）。
+      快捷方式改用 Advertise="yes" 也能过 ICE43，但广告式快捷方式在部分企业环境
+      被策略禁用，点击时还会触发"按需安装"，不值得。
+
+      只建开始菜单、不建桌面图标：exe 安装包里的桌面图标是可选任务且默认不勾，
+      MSI 要是无条件塞一个，同一个软件两种装法得到两种桌面，用户会以为是两个东西。
+    -->
+    <Component Id="StartMenuShortcut" Directory="ApplicationProgramsFolder" Guid="*">
+      <Shortcut Id="StartMenuShortcutLink"
+                Name="Wisp"
+                Description="LAN file transfer, LocalSend compatible"
+                Target="[INSTALLFOLDER]wisp.exe"
+                WorkingDirectory="INSTALLFOLDER" />
+      <RemoveFolder Id="RemoveApplicationProgramsFolder"
+                    Directory="ApplicationProgramsFolder"
+                    On="uninstall" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\Wisp\Installer"
+                     Name="StartMenuShortcut"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+
+    <Feature Id="Main" Title="Wisp" Level="1">
+      <ComponentRef Id="MainExecutable" />
+      <ComponentRef Id="StartMenuShortcut" />
+
+      <!--
+        整棵 Release 目录（flutter_windows.dll、data/ 里的 assets 与 shaders 等）。
+        Files 必须挂在 Feature（或 ComponentGroup）下：放在 Directory 下收割出来的
+        Component 没有父 Feature，构建会直接报 WIX0267 orphaned Component。
+
+        排除项：
+          · wisp.exe —— 上面已单独处理，重复收会撞 Component；
+          · *.log     —— 运行时日志（wisp_native_debug.log），属于用户现场产物，
+                         打进安装包只会让每次构建的产物不一致。
+      -->
+      <Files Include="$(var.SourceDir)\**" Directory="INSTALLFOLDER">
+        <Exclude Files="$(var.SourceDir)\wisp.exe" />
+        <Exclude Files="$(var.SourceDir)\*.log" />
+      </Files>
+    </Feature>
+
+  </Package>
+</Wix>

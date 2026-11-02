@@ -1,11 +1,17 @@
 # 四平台打包 + 发布 Release。
 # 触发：推送 v* 标签（如 v1.0.14），或手动 workflow_dispatch。
 # 产物（版本号取自标签）：
-#   Windows  wisp-windows-x64-<v>.zip（便携） + wisp-windows-x64-<v>-setup.exe（Inno Setup 安装包）
+#   Windows  wisp-windows-x64-<v>.zip（便携） + -setup.exe（Inno Setup） + .msi（WiX）
 #   macOS    wisp-macos-<v>.zip（便携） + wisp-macos-<v>.dmg（拖入 Applications）
 #   Linux    wisp-linux-x64-<v>.tar.gz（便携） + .deb / .rpm（fpm）+ .AppImage（linuxdeploy）
 #   Android  wisp-android-<v>.apk
-# update.json 的 downloadUrl 指向 Windows 安装包。
+# update.json 的 downloadUrl 指向 Windows 的 setup.exe。
+#
+# 为什么 Windows 同时给 exe 和 msi：
+#   · exe 是客户端一键更新的入口（lib/services/update_installer.dart 只放行 .exe）；
+#   · msi 是给企业批量部署用的（Intune / SCCM / GPO 只吃 MSI），支持
+#     `msiexec /i ... /qn` 静默安装与 `/l*v` 日志。
+#   两者装到同一个 Program Files\Wisp，用户只需选一种。
 #
 # TLS 证书说明：assets/certs 的私钥不入库（见 .gitignore）。
 # 每个平台的构建任务在打包前现场生成各自的 10 年自签证书——
@@ -195,6 +201,24 @@ jobs:
         run: |
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=$env:VERSION /O. packaging\windows\wisp.iss
 
+      # MSI（企业批量部署用）。工具用 dotnet tool 装 WiX v5：
+      #   · 版本必须锁死 —— WiX v6 起要求接受 OSMF 商业条款（构建时报 WIX7015），
+      #     不锁版本会在某天突然全部失败，而失败原因跟代码毫无关系；
+      #   · windows-latest 自带的 WiX 是 v3.14，schema 与 v4+ 不兼容，不能用。
+      # --tool-path 装到仓库内的临时目录，避开 PATH 刷新问题（全局安装后当前
+      # 进程的 PATH 不会立刻包含 ~/.dotnet/tools，要另写一行 GITHUB_PATH）。
+      - name: Package (windows msi)
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          dotnet tool install --tool-path .wix-tool wix --version 5.0.2
+          .\.wix-tool\wix.exe build packaging\windows\wisp.wxs `
+            -arch x64 `
+            -d AppVersion=$env:VERSION `
+            -d SourceDir="$env:GITHUB_WORKSPACE\build\windows\x64\runner\Release" `
+            -o "wisp-windows-x64-${env:VERSION}.msi"
+          Get-ChildItem wisp-windows-*.msi | Select-Object Name, Length | Format-Table -AutoSize
+
       # 便携 zip + DMG（拖入 Applications 的安装镜像）。
       - name: Package (macos)
         if: matrix.target == 'macos'
@@ -278,6 +302,7 @@ jobs:
           path: |
             wisp-windows-*.zip
             wisp-windows-*-setup.exe
+            wisp-windows-*.msi
             wisp-macos-*.zip
             wisp-macos-*.dmg
             wisp-linux-*.tar.gz

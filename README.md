@@ -153,6 +153,27 @@ bash tools/gen_cert.sh                   # 换发自签证书（内置了一张 
 
 > 环境要求：Flutter 3.24+（Dart 3.5+）。Android 需 7.0+，iOS 14+，桌面端无特殊要求。
 
+### Windows 安装包
+
+Release 里 Windows 给三种形态，装的是同一份程序（默认落到 `Program Files\Wisp`），选一种即可：
+
+| 文件 | 用途 |
+| --- | --- |
+| `wisp-windows-x64-<v>.zip` | 便携版，解压即用，不写注册表 |
+| `wisp-windows-x64-<v>-setup.exe` | Inno Setup 安装包；**客户端的一键更新走这个** |
+| `wisp-windows-x64-<v>.msi` | MSI，给 Intune / SCCM / GPO 批量部署 |
+
+MSI 支持静默安装与日志，适合脚本化分发：
+
+```powershell
+msiexec /i wisp-windows-x64-1.0.24.msi /qn          # 静默安装
+msiexec /i wisp-windows-x64-1.0.24.msi /qn /l*v install.log   # 带详细日志
+```
+
+MSI 定义在 `packaging/windows/wisp.wxs`（WiX v5），由 CI 用
+`dotnet tool install --tool-path .wix-tool wix --version 5.0.2` 构建。
+**版本号必须锁在 v5**：WiX v6 起要求接受 OSMF 商业条款，构建会直接报 WIX7015。
+
 ### 端口
 
 | 类型 | 协议 | 默认端口 | 说明 |

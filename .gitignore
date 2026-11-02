@@ -26,3 +26,7 @@ Thumbs.db
 
 # golden 失败诊断产物（对比图/蒙版/主图），本地生成，不入库
 test/failures/
+
+# MSI 打包时 dotnet tool 装在仓库内的 WiX（CI 与本地共用）
+.wix-tool/
+*.wixpdb
