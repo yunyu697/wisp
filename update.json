@@ -1,11 +1,11 @@
 {
-  "version": "1.0.29",
-  "notes": "修复更新装完后应用不会自己重新启动：Windows 的启动项绑在「安装完成页」上，而一键更新用的是静默安装、根本不显示那一页，装完就没下文；macOS 也不再需要手动重开。另外放大 macOS 菜单栏图标。",
-  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v1.0.29/wisp-windows-x64-1.0.29-setup.exe",
+  "version": "1.0.30",
+  "notes": "更新弹层新增「下载源」下拉，一键更新和仅下载都能自己挑官方直连或加速镜像；「仅下载」改为下到默认下载目录，下完直接给「安装」按钮；应用名统一为 Wisp。",
+  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v1.0.30/wisp-windows-x64-1.0.30-setup.exe",
   "downloads": {
-    "windows": "https://github.com/yunyu697/wisp/releases/download/v1.0.29/wisp-windows-x64-1.0.29-setup.exe",
-    "macos": "https://github.com/yunyu697/wisp/releases/download/v1.0.29/wisp-macos-1.0.29.dmg",
-    "linux": "https://github.com/yunyu697/wisp/releases/download/v1.0.29/wisp-linux-x64-1.0.29.AppImage",
-    "android": "https://github.com/yunyu697/wisp/releases/download/v1.0.29/wisp-android-1.0.29.apk"
+    "windows": "https://github.com/yunyu697/wisp/releases/download/v1.0.30/wisp-windows-x64-1.0.30-setup.exe",
+    "macos": "https://github.com/yunyu697/wisp/releases/download/v1.0.30/wisp-macos-1.0.30.dmg",
+    "linux": "https://github.com/yunyu697/wisp/releases/download/v1.0.30/wisp-linux-x64-1.0.30.AppImage",
+    "android": "https://github.com/yunyu697/wisp/releases/download/v1.0.30/wisp-android-1.0.30.apk"
   }
 }

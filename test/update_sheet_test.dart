@@ -112,5 +112,73 @@ void main() {
       expect(find.text('重试'), findsOneWidget);
       expect(find.text('官方源 · GitHub'), findsOneWidget);
     });
+
+    testWidgets('下载源下拉：列出官方与全部镜像，能选中镜像', (WidgetTester tester) async {
+      await pump(tester, newerStub);
+
+      // 默认选中官方源。
+      expect(find.text('下载源'), findsOneWidget);
+      expect(find.text('官方源（推荐）'), findsOneWidget);
+
+      await tester.tap(find.byType(DropdownButton<WispUpdateSourceOption>));
+      await tester.pumpAndSettle();
+
+      // 展开后每个镜像都有一项可选。
+      for (final String prefix in WispUpdateSource.mirrors) {
+        expect(find.text(WispUpdateSource.mirrorLabel(prefix)), findsWidgets);
+      }
+
+      final String first = WispUpdateSource.mirrorLabel(WispUpdateSource.mirrors.first);
+      await tester.tap(find.text(first).last);
+      await tester.pumpAndSettle();
+
+      // 选完收起，显示的是选中的镜像。
+      expect(find.text(first), findsOneWidget);
+      expect(find.text('官方源（推荐）'), findsNothing);
+    });
+  });
+
+  group('下载结果块', () {
+    Widget host(Widget child) => MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: WispTheme.light(fontFamily: 'Roboto'),
+          home: Scaffold(body: child),
+        );
+
+    testWidgets('安装包已下好时给出「安装」按钮，点了要真的触发安装', (WidgetTester tester) async {
+      int installs = 0;
+      await tester.pumpWidget(host(WispUpdateResultCard(
+        failed: false,
+        message: '安装包已下载到 /home/me/Downloads/wisp-9.9.9-setup.exe',
+        onInstall: () => installs++,
+        onDismiss: () {},
+      )));
+
+      expect(find.text('安装'), findsOneWidget);
+      await tester.tap(find.text('安装'));
+      expect(installs, 1);
+    });
+
+    testWidgets('没有可装的包时不给「安装」按钮（避免点了没反应）', (WidgetTester tester) async {
+      await tester.pumpWidget(host(WispUpdateResultCard(
+        failed: false,
+        message: '已更新到「应用程序」，正在重启 Wisp…',
+        onDismiss: () {},
+      )));
+
+      expect(find.text('安装'), findsNothing);
+      expect(find.text('关闭提示'), findsOneWidget);
+    });
+
+    testWidgets('失败态：结论用错误样式，按钮是「重试」', (WidgetTester tester) async {
+      await tester.pumpWidget(host(WispUpdateResultCard(
+        failed: true,
+        message: '下载失败：连不上',
+        onDismiss: () {},
+      )));
+
+      expect(find.text('重试'), findsOneWidget);
+      expect(find.byIcon(Icons.error_outline_rounded), findsOneWidget);
+    });
   });
 }

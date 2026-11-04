@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 
 /// 主窗口 + 悬浮球的当前状态，用于决定通知走哪条通道。
@@ -44,6 +46,24 @@ class DesktopService {
   const DesktopService._();
 
   static const MethodChannel _channel = MethodChannel('wisp/desktop');
+
+  /// 该平台有没有原生悬浮球实现。
+  ///
+  /// **只有 Windows 有**：它是一个自绘的分层窗口（`WS_EX_LAYERED` +
+  /// `UpdateLayeredWindow`），大小、吸附、气泡都在 runner 的 C++ 里画。
+  ///
+  /// macOS 的 `wisp/desktop` 通道只实现了窗口/菜单栏那部分，`setFloatingBall`
+  /// 直接回 `FlutterMethodNotImplemented`；Linux 根本没人实现；Android 也没有
+  /// 对得上的悬浮窗形态。设置页据此隐藏开关——**显示一个点了没反应的开关，
+  /// 比不显示更糟**（用户会以为功能坏了，反复开关）。
+  static bool get supportsFloatingBall =>
+      _supportsFloatingBallOverride ?? Platform.isWindows;
+
+  static bool? _supportsFloatingBallOverride;
+
+  /// 仅供测试注入平台能力（默认跟随当前平台）。
+  static void debugSetSupportsFloatingBall(bool? value) =>
+      _supportsFloatingBallOverride = value;
 
   /// 原生层推回来的事件。AppState 启动时注册一次。
   static void Function(String event, Map<Object?, Object?> args)? _eventHandler;

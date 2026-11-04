@@ -7,6 +7,7 @@ import '../../core/design/app_colors.dart';
 import '../../core/design/app_motion.dart';
 import '../../core/release_notes.dart';
 import '../../models/network.dart';
+import '../../services/desktop_service.dart';
 import '../../services/update_service.dart';
 import '../../state/app_state.dart';
 import '../responsive.dart';
@@ -233,22 +234,26 @@ class SettingsPage extends StatelessWidget {
                       onChanged: state.setSilentStart,
                     ),
                   ),
-                  _SettingRow(
-                    icon: Icons.circle_rounded,
-                    title: '桌面悬浮球',
-                    subtitle: '桌面上常驻一个可拖动的圆球，收到文件时在旁边弹出气泡',
-                    trailing: Switch(
-                      value: state.settings.floatingBall,
-                      onChanged: state.setFloatingBall,
+                  // 悬浮球只有 Windows 有原生实现（自绘分层窗口），
+                  // 其余平台显示开关等于给一个点了没反应的按钮。
+                  if (DesktopService.supportsFloatingBall) ...<Widget>[
+                    _SettingRow(
+                      icon: Icons.circle_rounded,
+                      title: '桌面悬浮球',
+                      subtitle: '桌面上常驻一个可拖动的圆球，收到文件时在旁边弹出气泡',
+                      trailing: Switch(
+                        value: state.settings.floatingBall,
+                        onChanged: state.setFloatingBall,
+                      ),
                     ),
-                  ),
-                  _SettingRow(
-                    icon: Icons.touch_app_rounded,
-                    title: '悬浮球展开延时',
-                    subtitle: '收成把手后，鼠标悬停多久自动展开',
-                    value: _delayLabel(state.settings.ballShowDelayMs),
-                    onTap: () => _pickBallDelay(context, state),
-                  ),
+                    _SettingRow(
+                      icon: Icons.touch_app_rounded,
+                      title: '悬浮球展开延时',
+                      subtitle: '收成把手后，鼠标悬停多久自动展开',
+                      value: _delayLabel(state.settings.ballShowDelayMs),
+                      onTap: () => _pickBallDelay(context, state),
+                    ),
+                  ],
                   _SettingRow(
                     icon: Icons.health_and_safety_rounded,
                     title: '服务守护',

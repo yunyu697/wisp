@@ -13,7 +13,12 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>$(PRODUCT_NAME)</string>
+	<!-- 写死 "Wisp" 而不是 $(PRODUCT_NAME)：Xcode target 名是小写 wisp，
+	     菜单栏里那句应用名、Finder 里显示的名字都会跟着变成小写。
+	     CFBundleDisplayName 是 Finder/「关于」里优先显示的名字。 -->
+	<string>Wisp</string>
+	<key>CFBundleDisplayName</key>
+	<string>Wisp</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

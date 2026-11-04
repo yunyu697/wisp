@@ -18,6 +18,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'desktop_service.dart';
 import 'update_service.dart';
@@ -53,16 +54,22 @@ class WispUpdateInstaller {
 
   /// 下载当前平台安装包，返回本地文件路径。
   ///
-  /// 官方源失败自动换镜像逐个重试（与清单检查同一套源顺序）。
+  /// [source] 用户在界面上下拉选的下载源。为空或选官方源时按 官方 → 镜像
+  /// 顺序重试；选了某个镜像时**先走它**，失败再按默认顺序兜底——镜像站
+  /// 挂掉是常事，让用户重选一遍不如自动退回去。
   /// [info] 供测试注入已拿到的清单；null 时现场查一次。
   /// [onProgress] 参数为（已收字节, 总字节），总长未知时为 0。
   /// [requireVerified] 为 true 时（一键更新），清单必须给出本平台的 sha256，
   /// 且下载结果必须逐字节对得上；否则拒绝安装。为 false 时（仅下载）允许
   /// 没有校验值，但仍然会在有校验值时比对。
+  /// [targetDir] 落盘目录。一键更新给临时目录（装完即弃）；「仅下载」给
+  /// 用户的下载目录（[userDownloadDir]），下完要能被找到、能手动安装。
   static Future<String> download({
     void Function(int received, int total)? onProgress,
     WispUpdateInfo? info,
     bool requireVerified = true,
+    WispUpdateSourceOption? source,
+    Directory? targetDir,
   }) async {
     final WispUpdateInfo? manifest = info ?? await WispUpdateService.check();
     final String primary = manifest?.primaryUrl ?? WispUpdateSource.releasePageUrl;
@@ -76,18 +83,13 @@ class WispUpdateInstaller {
       // 没有摘要就不自动装——否则等于"从第三方镜像下个 exe 就提权运行"。
       throw StateError('更新清单没有提供校验值，已取消自动安装；请改用「仅下载」后手动安装');
     }
-    // 镜像只代理 GitHub 地址；本地/自建源拼上前缀毫无意义，还会白等超时。
-    final bool mirrorable = primary.contains('github.com/');
-    final List<String> urls = <String>[
-      primary,
-      if (mirrorable)
-        for (final String prefix in WispUpdateSource.mirrors) '$prefix$primary',
-    ];
+    final List<String> urls = sourceOrder(primary, source);
+    final Directory dir = targetDir ?? downloadDir();
     Object? lastError;
     bool tampered = false;
     for (final String url in urls) {
       try {
-        final String path = await _downloadOne(url, onProgress);
+        final String path = await _downloadOne(url, onProgress, dir);
         if (expected == null) return path;
         final String actual = await sha256OfFile(path);
         if (actual == expected) return path;
@@ -109,6 +111,24 @@ class WispUpdateInstaller {
     throw StateError('所有下载源都失败了：$lastError');
   }
 
+  /// 下载尝试顺序：用户选的源排第一，其余按 官方 → 镜像 兜底。
+  ///
+  /// 公开给测试：这条顺序决定了"用户在下拉里选了镜像，就真的先走镜像"，
+  /// 光看下载结果看不出来（本地回环测试里官方源也在线）。
+  static List<String> sourceOrder(String primary, WispUpdateSourceOption? source) {
+    // 镜像只代理 GitHub 地址；本地/自建源拼上前缀毫无意义，还会白等超时。
+    final bool mirrorable = primary.contains('github.com/');
+    final List<String> fallback = <String>[
+      primary,
+      if (mirrorable)
+        for (final String prefix in WispUpdateSource.mirrors) '$prefix$primary',
+    ];
+    final String? prefix = source?.prefix;
+    if (prefix == null || !mirrorable) return fallback;
+    final String chosen = '$prefix$primary';
+    return <String>[chosen, ...fallback.where((String u) => u != chosen)];
+  }
+
   /// 文件的 sha256（小写十六进制），流式计算，不把整个安装包读进内存。
   static Future<String> sha256OfFile(String path) async {
     final Digest digest = await sha256.bind(File(path).openRead()).first;
@@ -118,6 +138,7 @@ class WispUpdateInstaller {
   static Future<String> _downloadOne(
     String url,
     void Function(int received, int total)? onProgress,
+    Directory dir,
   ) async {
     final HttpClient client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 8);
@@ -129,7 +150,6 @@ class WispUpdateInstaller {
       }
       final String fileName = _fileNameFromUrl(url);
       if (fileName.isEmpty) throw StateError('拿不到下载文件名：$url');
-      final Directory dir = downloadDir();
       await dir.create(recursive: true);
       // 下载到临时名再改名：中断残留的半个文件不能冒充安装包。
       final File target = File('${dir.path}${Platform.pathSeparator}$fileName');
@@ -166,20 +186,38 @@ class WispUpdateInstaller {
     return segments.isEmpty ? '' : segments.last;
   }
 
-  /// 安装包保存目录：
-  /// · Windows / macOS 放系统临时目录——装完即弃，别占用户空间；
-  /// · Linux / Android 走"仅下载"，要放用户找得到的地方。
-  static Directory downloadDir() {
-    if (Platform.isLinux) {
-      final String? home = Platform.environment['HOME'];
-      if (home != null && home.isNotEmpty) {
-        return Directory('$home/Downloads');
-      }
+  /// 「一键更新」用的临时落盘目录：装完即弃，不该占用户空间。
+  static Directory downloadDir() => Directory.systemTemp;
+
+  /// 「仅下载」用的落盘目录：**用户的默认下载目录**。
+  ///
+  /// 以前无论哪种下载都丢进系统临时目录——用户点「仅下载」之后既看不到
+  /// 文件、也没法安装，等于白下。现在下到用户自己会去的地方：
+  /// Windows `%USERPROFILE%\Downloads`、macOS/Linux `~/Downloads`、
+  /// Android 应用外部目录（无需存储权限）。
+  ///
+  /// path_provider 拿不到时（测试环境、精简系统）退回按环境变量拼，
+  /// 再不行才用临时目录——绝不让下载因为"找不到下载夹"而失败。
+  static Future<Directory> userDownloadDir() async {
+    try {
+      final Directory? dir = await getDownloadsDirectory();
+      if (dir != null && dir.path.isNotEmpty) return dir;
+    } catch (_) {
+      // 测试环境没有平台通道，按环境变量兜底。
     }
     if (Platform.isAndroid) {
-      // Android 专属外部文件目录无需存储权限；路径长，但界面上会完整展示。
-      // getExternalStorageDirectory 在 plugin 侧，这里用环境约定路径兜底。
+      try {
+        final Directory? external = await getExternalStorageDirectory();
+        if (external != null) return external;
+      } catch (_) {
+        // 继续兜底。
+      }
       return Directory.systemTemp;
+    }
+    final String? home = Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'];
+    if (home != null && home.isNotEmpty) {
+      return Directory('$home${Platform.pathSeparator}Downloads');
     }
     return Directory.systemTemp;
   }

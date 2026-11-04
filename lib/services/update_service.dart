@@ -54,8 +54,46 @@ class WispUpdateSource {
   static String mirrorLabel(String prefix) =>
       prefix.replaceFirst(RegExp(r'^https?://'), '').replaceAll(RegExp(r'/+$'), '');
 
+  /// 可手动选择的下载源：官方直连在前，其余按 [mirrors] 顺序。
+  ///
+  /// 展示名刻意与「手动下载」列表里的 `官方源 · GitHub` / `加速镜像 · xxx`
+  /// 不同：那两行是**发布页链接**，这里是**下载安装包时走哪条线路**，
+  /// 混用名字会让人以为是同一个开关。
+  ///
+  /// 做成 static final（只算一次）：DropdownButton 用值相等匹配当前项，
+  /// 每次重建都给出新实例会让它选不中、直接抛断言。
+  static final List<WispUpdateSourceOption> downloadOptions =
+      <WispUpdateSourceOption>[
+    const WispUpdateSourceOption(label: '官方源（推荐）', prefix: null),
+    for (final String prefix in mirrors)
+      WispUpdateSourceOption(label: mirrorLabel(prefix), prefix: prefix),
+  ];
+
   static String get releasePageUrl =>
       'https://github.com/$repoOwner/$repoName/releases/latest';
+}
+
+/// 一个可选下载源。`prefix == null` 表示官方直连（不经过任何第三方）。
+class WispUpdateSourceOption {
+  const WispUpdateSourceOption({required this.label, required this.prefix});
+
+  /// 下拉列表里的展示名。
+  final String label;
+
+  /// 镜像前缀（`https://ghfast.top/` 这种）；官方源为 null。
+  final String? prefix;
+
+  bool get isOfficial => prefix == null;
+
+  /// 把原始地址套成本源上的地址。
+  String apply(String url) => prefix == null ? url : '$prefix$url';
+
+  @override
+  bool operator ==(Object other) =>
+      other is WispUpdateSourceOption && other.prefix == prefix;
+
+  @override
+  int get hashCode => prefix.hashCode;
 }
 
 /// 一次成功的检查结果。

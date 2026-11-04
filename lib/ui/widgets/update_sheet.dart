@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../../core/release_notes.dart';
@@ -45,6 +47,12 @@ class _UpdateSheetState extends State<UpdateSheet> {
   _Phase _phase = _Phase.idle;
   double? _progress; // null = 总长未知，进度条转圈
   String _resultText = '';
+
+  /// 用户在「下载源」下拉里选中的线路。默认官方直连。
+  WispUpdateSourceOption _source = WispUpdateSource.downloadOptions.first;
+
+  /// 「仅下载」下好的安装包路径——非空时才在结果区给出「安装」按钮。
+  String? _downloadedPath;
 
   @override
   void initState() {
@@ -247,68 +255,105 @@ class _UpdateSheetState extends State<UpdateSheet> {
       case _Phase.done:
       case _Phase.failed:
         final bool failed = _phase == _Phase.failed;
+        // 「仅下载」下完之后：文件就在用户的下载目录里，这里直接给出安装入口。
+        // 不能只丢一句"请手动安装"——Windows 的 UAC、macOS 的挂载都还是我们
+        // 能替用户做的，用户没必要自己去找那个文件。
+        final String? pending = failed ? null : _downloadedPath;
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Icon(
-                    failed ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded,
-                    size: 18,
-                    color: failed ? WispColors.warning : WispColors.success,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _resultText,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => setState(() => _phase = _Phase.idle),
-                    child: Text(failed ? '重试' : '关闭提示'),
-                  ),
-                ],
-              ),
-            ],
+          child: WispUpdateResultCard(
+            failed: failed,
+            message: _resultText,
+            onInstall: pending != null && WispUpdateInstaller.supportsAutoInstall
+                ? () => _install(pending, restart: true)
+                : null,
+            onDismiss: () => setState(() {
+              _phase = _Phase.idle;
+              _downloadedPath = null;
+            }),
           ),
         );
       case _Phase.idle:
         final bool auto = WispUpdateInstaller.supportsAutoInstall;
         return Padding(
           padding: const EdgeInsets.only(top: 2, bottom: 4),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              if (auto) ...<Widget>[
-                // 不给按钮配图标：三等分的宽度里 icon 会把文字挤成省略号。
-                Expanded(
-                  child: FilledButton(
-                    onPressed: _autoUpdate,
-                    child: const Text('一键更新', overflow: TextOverflow.ellipsis),
+              Row(
+                children: <Widget>[
+                  if (auto) ...<Widget>[
+                    // 不给按钮配图标：三等分的宽度里 icon 会把文字挤成省略号。
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: _autoUpdate,
+                        child: const Text('一键更新', overflow: TextOverflow.ellipsis),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _downloadOnly,
+                      child: const Text('仅下载', overflow: TextOverflow.ellipsis),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-              ],
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _downloadOnly,
-                  child: const Text('仅下载', overflow: TextOverflow.ellipsis),
-                ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextButton(
+                      onPressed: _openReleasePage,
+                      child: const Text('打开下载页', overflow: TextOverflow.ellipsis),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextButton(
-                  onPressed: _openReleasePage,
-                  child: const Text('打开下载页', overflow: TextOverflow.ellipsis),
-                ),
-              ),
+              const SizedBox(height: 4),
+              _sourceRow(context),
             ],
           ),
         );
     }
+  }
+
+  /// 下载源下拉：一键更新与仅下载都按这里选的线路走。
+  ///
+  /// 默认官方直连。选了镜像也会在它失败后自动退回官方源重试——镜像站
+  /// 随时可能挂，让用户回来重选一遍纯属折腾。
+  Widget _sourceRow(BuildContext context) {
+    return Row(
+      children: <Widget>[
+        Icon(Icons.route_rounded,
+            size: 16, color: WispColors.secondaryText(context)),
+        const SizedBox(width: 6),
+        Text('下载源', style: Theme.of(context).textTheme.bodySmall),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<WispUpdateSourceOption>(
+                value: _source,
+                isDense: true,
+                borderRadius: BorderRadius.circular(12),
+                style: Theme.of(context).textTheme.bodyMedium,
+                items: <DropdownMenuItem<WispUpdateSourceOption>>[
+                  for (final WispUpdateSourceOption option
+                      in WispUpdateSource.downloadOptions)
+                    DropdownMenuItem<WispUpdateSourceOption>(
+                      value: option,
+                      child: Text(option.label, overflow: TextOverflow.ellipsis),
+                    ),
+                ],
+                onChanged: (WispUpdateSourceOption? picked) {
+                  if (picked == null || picked == _source) return;
+                  setState(() => _source = picked);
+                },
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _progressBlock(BuildContext context,
@@ -345,19 +390,28 @@ class _UpdateSheetState extends State<UpdateSheet> {
     );
   }
 
-  /// 官方源 + 镜像逐个重试地下载；进度实时刷进 [_progress]。
+  /// 按当前选中的下载源下载；进度实时刷进 [_progress]。
   /// 失败时把 [_phase] 置为 failed 并返回 null。
   ///
   /// [verified] 为 true 时要求清单提供 sha256 并逐字节比对（一键更新必须走这条）；
   /// 「仅下载」放宽到"有校验值就比、没有就下"，用户自己决定装不装。
-  Future<String?> _runDownload({required bool verified}) async {
+  /// [toUserDir] 为 true 时落到用户的默认下载目录（仅下载），否则落临时目录。
+  Future<String?> _runDownload({
+    required bool verified,
+    required bool toUserDir,
+  }) async {
     setState(() {
       _phase = _Phase.downloading;
       _progress = null;
     });
     try {
+      final Directory? dir = toUserDir
+          ? await WispUpdateInstaller.userDownloadDir()
+          : null;
       final String path = await WispUpdateInstaller.download(
         requireVerified: verified,
+        source: _source,
+        targetDir: dir,
         onProgress: (int received, int total) {
           if (!mounted) return;
           setState(() {
@@ -378,9 +432,19 @@ class _UpdateSheetState extends State<UpdateSheet> {
 
   /// 一键更新：下载 + 自动安装 + 自动重启。
   Future<void> _autoUpdate() async {
-    final String? path = await _runDownload(verified: true);
+    final String? path = await _runDownload(verified: true, toUserDir: false);
     if (path == null || !mounted) return;
-    setState(() => _phase = _Phase.installing);
+    await _install(path);
+  }
+
+  /// 装一个已经下好的安装包。[restart] 为 true 时装完自动重启（macOS 需要
+  /// 自己拉起新版；Windows 由安装器的静默启动项负责，restartPath 为 null）。
+  Future<void> _install(String path, {bool restart = true}) async {
+    if (!mounted) return;
+    setState(() {
+      _phase = _Phase.installing;
+      _downloadedPath = null;
+    });
     UpdateInstallOutcome outcome;
     try {
       outcome = await WispUpdateInstaller.install(path);
@@ -397,33 +461,26 @@ class _UpdateSheetState extends State<UpdateSheet> {
       _phase = outcome.ok ? _Phase.done : _Phase.failed;
       _resultText = outcome.message;
     });
-    // macOS 要自己完成重启（Windows 由安装器拉起新版，restartPath 为 null）。
     // 留一点时间让用户看清"正在重启"，否则窗口突然消失像是崩了。
     final String? restartTo = outcome.restartPath;
-    if (outcome.ok && restartTo != null) {
+    if (restart && outcome.ok && restartTo != null) {
       await Future<void>.delayed(const Duration(milliseconds: 1200));
       if (!mounted) return;
       await WispUpdateInstaller.restartInto(restartTo);
     }
   }
 
-  /// 仅下载：下完提示装在哪、怎么装。
+  /// 仅下载：下到用户的下载目录，下完在结果区给出「安装」按钮。
   Future<void> _downloadOnly() async {
-    final String? path = await _runDownload(verified: false);
+    final String? path = await _runDownload(verified: false, toUserDir: true);
     if (path == null || !mounted) return;
-    final String hint = WispUpdateInstaller.supportsAutoInstall
-        ? '安装包已下载：$path。打开它即可安装。'
-        : '安装包已下载：$path，请手动安装。';
     setState(() {
       _phase = _Phase.done;
-      _resultText = hint;
+      _downloadedPath = path;
+      _resultText = WispUpdateInstaller.supportsAutoInstall
+          ? '安装包已下载到 $path，可以直接点「安装」。'
+          : '安装包已下载到 $path，请手动安装。';
     });
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(hint, maxLines: 3, overflow: TextOverflow.ellipsis),
-        duration: const Duration(seconds: 8),
-      ));
   }
 
   /// 打开下载页：Release 页面里各平台产物自己挑。
@@ -504,7 +561,7 @@ class _UpdateSheetState extends State<UpdateSheet> {
       Padding(
         padding: const EdgeInsets.only(top: 4),
         child: Text(
-          '镜像站为第三方加速服务，只代理下载地址；一键更新始终走官方源，失败时自动换镜像重试。',
+          '镜像站为第三方加速服务，只代理下载地址；下载源可在上方切换，所选镜像失败会自动退回官方源。',
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ),
@@ -518,4 +575,68 @@ class _UpdateSheetState extends State<UpdateSheet> {
           ('加速镜像 · ${WispUpdateSource.mirrorLabel(prefix)}',
               '$prefix${WispUpdateSource.releasePageUrl}'),
       ];
+}
+
+/// 下载/安装结束后的结果块：一行结论 + 可选「安装」按钮。
+///
+/// 单独拆成 public widget 是为了能被直接测试——「仅下载完成之后必须能给
+/// 一键安装」是用户明确提过的诉求，而触发它需要走完整条下载链路
+/// （widget 测试里 HttpClient 会被拦截，跑不成真下载）。
+class WispUpdateResultCard extends StatelessWidget {
+  const WispUpdateResultCard({
+    super.key,
+    required this.failed,
+    required this.message,
+    required this.onDismiss,
+    this.onInstall,
+  });
+
+  final bool failed;
+  final String message;
+
+  /// 非空时显示「安装」按钮（安装包已下好、且该平台支持自动安装）。
+  final VoidCallback? onInstall;
+
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Icon(
+              failed
+                  ? Icons.error_outline_rounded
+                  : Icons.check_circle_outline_rounded,
+              size: 18,
+              color: failed ? WispColors.warning : WispColors.success,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                message,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: <Widget>[
+            if (onInstall != null) ...<Widget>[
+              FilledButton(onPressed: onInstall, child: const Text('安装')),
+              const SizedBox(width: 8),
+            ],
+            TextButton(
+              onPressed: onDismiss,
+              child: Text(failed ? '重试' : '关闭提示'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
 }

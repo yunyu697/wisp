@@ -9,10 +9,16 @@ class WispReleaseNotes {
   const WispReleaseNotes._();
 
   /// 当前应用版本（与 pubspec.yaml 的 `version:` 保持一致）。
-  static const String currentVersion = '1.0.29';
+  static const String currentVersion = '1.0.30';
 
   /// 新版本在前，设置页按这个顺序展示。
   static const List<WispReleaseEntry> entries = <WispReleaseEntry>[
+    WispReleaseEntry(version: '1.0.30', changes: <String>[
+      '更新弹层新增「下载源」下拉：一键更新和仅下载都能自己挑官方直连或某个加速镜像，不用再等官方源超时才换；所选镜像失败会自动退回官方源重试',
+      '修复「仅下载」把安装包丢进临时目录、下完既找不到也没法装：现在下到你的默认下载目录，并在下面直接给出「安装」按钮',
+      '修复 macOS 关窗后菜单栏里那行应用名是小写：应用名统一为 Wisp（macOS、Windows 文件属性、Linux 窗口标题、Android 桌面名称）',
+      '悬浮球只保留在真正支持的平台：macOS 和 Android 不再显示「桌面悬浮球」开关，之前开关点了没反应',
+    ]),
     WispReleaseEntry(version: '1.0.29', changes: <String>[
       '修复更新装完后应用不会自己重新启动：Windows 的启动项绑在「安装完成页」上，而一键更新用的是静默安装、根本不显示那一页，所以装完就没下文；现在静默安装结束会直接把新版拉起来',
       'Windows 更新前会先关掉还在运行的旧版（它平时关窗口只是缩到托盘，安装程序关不掉它，文件一直被占用）',
