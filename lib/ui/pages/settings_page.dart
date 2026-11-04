@@ -217,9 +217,9 @@ class SettingsPage extends StatelessWidget {
                 title: '系统',
                 children: <Widget>[
                   // 下面这几项依赖原生实现（托盘 / 首帧显隐 / Windows 服务 /
-                  // 悬浮球），目前只有 Windows runner 有。其余平台显示出来
-                  // 只会让人反复点——macOS 关窗本来就会驻留菜单栏，不需要这个
-                  // 开关；Linux 连通道都没接。
+                  // 悬浮球），各平台实现的并不是同一批：macOS 有关窗驻留菜单栏
+                  // 和桌面浮层（通知卡 / 悬浮球 / 气泡），但没有托盘最小化、
+                  // 静默启动和服务守护；Linux 连通道都没接。
                   if (DesktopService.supportsTrayMinimize)
                     _SettingRow(
                       icon: Icons.close_rounded,
@@ -240,8 +240,8 @@ class SettingsPage extends StatelessWidget {
                         onChanged: state.setSilentStart,
                       ),
                     ),
-                  // 悬浮球只有 Windows 有原生实现（自绘分层窗口），
-                  // 其余平台显示开关等于给一个点了没反应的按钮。
+                  // 悬浮球：Windows 是自绘分层窗口，macOS 是 NSPanel。
+                  // 没有原生实现的平台不显示这个开关。
                   if (DesktopService.supportsFloatingBall) ...<Widget>[
                     _SettingRow(
                       icon: Icons.circle_rounded,

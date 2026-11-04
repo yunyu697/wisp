@@ -3,6 +3,8 @@ import FlutterMacOS
 
 class MainFlutterWindow: NSWindow, NSWindowDelegate {
   private var statusItem: NSStatusItem?
+  private var channel: FlutterMethodChannel?
+  private var lastReportedVisible: Bool?
 
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
@@ -16,7 +18,32 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
 
     self.delegate = self
     installStatusItem()
+    setupOverlay()
     setupChannel(flutterViewController)
+  }
+
+  // MARK: - 桌面浮层
+
+  /// 通知卡 / 悬浮球 / 气泡（见 WispOverlay.swift）。
+  ///
+  /// 之前 macOS 完全没有这套东西：通道里没有对应方法，Dart 调用静默失败，
+  /// 设置页只能把这个开关藏起来。关掉窗口驻留菜单栏之后"收到文件没有任何
+  /// 提示"就成了最影响日常的问题，所以这里补齐与 Windows 对等的能力。
+  private func setupOverlay() {
+    let overlay = WispOverlay.shared
+    overlay.eventSink = { [weak self] name, args in
+      self?.channel?.invokeMethod(name, arguments: args)
+    }
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(overlayWantsMainWindow),
+      name: .wispOverlayWantsMainWindow,
+      object: nil)
+  }
+
+  @objc private func overlayWantsMainWindow() {
+    WispOverlay.shared.hideToast()
+    revealMainWindow()
   }
 
   // MARK: - 关窗 -> 菜单栏驻留
@@ -31,6 +58,27 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
   /// applicationShouldTerminateAfterLastWindowClosed = false。
   func windowWillClose(_ notification: Notification) {
     NSApp.setActivationPolicy(.accessory)
+    reportWindowVisibility(false)
+  }
+
+  /// 最小化也算"用户看不见"：窗口还在、引擎还在出帧，但屏幕上没有它。
+  /// 主界面那圈雷达是无限动画，没人看还照画会白吃 CPU。
+  func windowDidMiniaturize(_ notification: Notification) {
+    reportWindowVisibility(false)
+  }
+
+  func windowDidDeminiaturize(_ notification: Notification) {
+    reportWindowVisibility(isVisible)
+  }
+
+  func windowDidBecomeKey(_ notification: Notification) {
+    reportWindowVisibility(true)
+  }
+
+  private func reportWindowVisibility(_ visible: Bool) {
+    if lastReportedVisible == visible { return }
+    lastReportedVisible = visible
+    channel?.invokeMethod("onWindowVisibility", arguments: ["visible": visible])
   }
 
   private func revealMainWindow() {
@@ -38,6 +86,9 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     makeKeyAndOrderFront(self)
     NSApp.activate(ignoringOtherApps: true)
     setFlashing(false)
+    reportWindowVisibility(true)
+    // Dart 侧据此把桌面提醒退场：用户已经回到主窗口，后续进度在界面里看。
+    channel?.invokeMethod("onWindowRestored", arguments: nil)
   }
 
   // MARK: - 菜单栏图标
@@ -136,42 +187,103 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
   // MARK: - 平台通道（wisp/desktop）
 
   /// Windows 侧这套通道已有完整实现；macOS 这里补齐对等语义。
-  /// 没实现的方法照旧回 FlutterMethodNotImplemented，Dart 侧会静默忽略，
-  /// 所以悬浮球之类没有 macOS 形态的能力不影响主流程。
+  ///
+  /// 服务守护（SCM）、托盘闪烁之外的 Windows 专有能力仍然回
+  /// FlutterMethodNotImplemented，Dart 侧会静默忽略；设置页也按平台隐藏了
+  /// 对应开关，不会出现"点了没反应"的按钮。
   private func setupChannel(_ controller: FlutterViewController) {
     let messenger = controller.engine.binaryMessenger
     let channel = FlutterMethodChannel(name: "wisp/desktop", binaryMessenger: messenger)
+    self.channel = channel
+    let overlay = WispOverlay.shared
+
     channel.setMethodCallHandler { [weak self] (call, result) in
       guard let self = self else {
         result(nil)
         return
       }
+      let args = call.arguments as? [String: Any] ?? [:]
+      let mode = args["mode"] as? Int ?? 0
+      let progress = args["progress"] as? String ?? ""
+      let title = args["title"] as? String ?? ""
+      let body = args["body"] as? String ?? ""
+
       switch call.method {
       case "showWindow":
-        // 托盘/菜单栏点击唤回主窗口。
-        self.revealMainWindow()
+        // 托盘/菜单栏点击唤回主窗口（顺手收掉通知卡）。
+        self.overlayWantsMainWindow()
         result(true)
       case "windowState":
         // 通知分流要的两维：主窗口可见 + 是否正被使用。
         // 窗口可见但用户在别的应用里（isActive=false）时，应用内弹层看不见。
-        let visible = self.isVisible
+        let ball = overlay.ballState
+        let visible = self.isVisible && !self.isMiniaturized
         let active = visible && self.isKeyWindow && NSApp.isActive
         result([
           "visible": visible,
           "active": active,
-          "ballEnabled": false,
-          "ballExpanded": false,
-          "ballSnapped": false
+          "ballEnabled": ball.enabled,
+          "ballExpanded": ball.expanded,
+          "ballSnapped": ball.snapped,
         ])
       case "isWindowVisible":
-        result(self.isVisible)
+        result(self.isVisible && !self.isMiniaturized)
       case "isSupported":
-        // 桌面驻留能力存在（菜单栏图标）。
+        // 桌面驻留能力存在（菜单栏图标 + 桌面浮层）。
         result(true)
       case "setTrayFlashing":
-        let args = call.arguments as? [String: Any]
-        let enabled = args?["enabled"] as? Bool ?? false
-        self.setFlashing(enabled)
+        self.setFlashing(args["enabled"] as? Bool ?? false)
+        result(nil)
+      case "setFloatingBall":
+        var pos: NSPoint?
+        if let x = args["x"] as? Int, let y = args["y"] as? Int {
+          pos = NSPoint(x: x, y: y)
+        }
+        overlay.setFloatingBall(
+          enabled: args["enabled"] as? Bool ?? false,
+          hoverDelayMs: args["hoverDelayMs"] as? Int ?? 300,
+          savedPos: pos,
+          savedSnapped: args["snapped"] as? Bool ?? false,
+          savedEdge: args["edge"] as? Int ?? -1)
+        result(nil)
+      case "showBallAlert":
+        overlay.showBallAlert()
+        result(nil)
+      case "collapseBall":
+        overlay.collapseBall()
+        result(nil)
+      case "showToast":
+        overlay.showToast(title, body: body, mode: mode, progress: progress)
+        result(nil)
+      case "updateToast":
+        overlay.updateToast(body, mode: mode, progress: progress)
+        result(nil)
+      case "hideToast":
+        overlay.hideToast()
+        result(nil)
+      case "showBubble":
+        overlay.showBubble(title, body: body, mode: mode, progress: progress)
+        result(nil)
+      case "updateBubble":
+        overlay.updateBubble(body, mode: mode, progress: progress)
+        result(nil)
+      case "hideBubble":
+        overlay.hideBubble()
+        result(nil)
+      case "surfaceStatus":
+        // Dart 靠这个确认"发出去的通知真的画出来了"，没出来会重发。
+        result(overlay.surfaceStatus)
+      case "debugWindows":
+        result(overlay.windowsDebug)
+      case "debugBallDim":
+        result(overlay.ballDimLevel)
+      case "debugSetMainVisible":
+        if args["visible"] as? Bool ?? true {
+          self.revealMainWindow()
+        } else {
+          self.orderOut(nil)
+          self.reportWindowVisibility(false)
+        }
         result(nil)
       default:
         result(FlutterMethodNotImplemented)

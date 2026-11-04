@@ -35,6 +35,10 @@ class DesktopWindowState {
   bool get userIsLooking => visible && active;
 }
 
+/// 桌面能力按平台分档。测试里要能模拟"跑在 macOS 上"，所以单独抽出来，
+/// 不直接读 `Platform`。
+enum DesktopPlatform { windows, macos, linux }
+
 /// 与桌面原生层通信的小通道。
 ///
 /// 管三类事：
@@ -47,31 +51,52 @@ class DesktopService {
 
   static const MethodChannel _channel = MethodChannel('wisp/desktop');
 
-  /// 这些设置项背后都要原生实现，而**只有 Windows 的 runner 有**。
+  /// 这些设置项背后都要原生实现，而各平台实现的并不是同一批。
   ///
-  /// Windows 侧是一个自绘分层窗口 + 托盘图标 + Windows 服务；macOS 只实现了
-  /// 窗口/菜单栏那几条（`showWindow` / `windowState` / `setTrayFlashing`），
-  /// 其余方法一律回 `FlutterMethodNotImplemented`；Linux runner 连通道都没接。
+  /// * Windows：自绘分层窗口（悬浮球/气泡/通知卡）+ 托盘 + 服务守护，全都有；
+  /// * macOS：菜单栏驻留 + `WispOverlay.swift` 里的 NSPanel 浮层（通知卡 /
+  ///   悬浮球 / 气泡），但没有托盘最小化、静默启动和 SCM 服务；
+  /// * Linux：通道都没接。
   ///
   /// 设置页据此隐藏开关：**一个点了没反应的开关比没有更糟**——用户会以为
   /// 功能坏了，反复开关、然后来信反馈"没效果"。
   static bool get supportsFloatingBall =>
-      _desktopOverride ?? Platform.isWindows;
+      _desktopOverride ??
+      (_platform == DesktopPlatform.windows ||
+          _platform == DesktopPlatform.macos);
 
-  /// 关窗收进托盘（macOS 关窗后靠菜单栏驻留，不需要这个开关；
-  /// Linux 没有托盘实现）。
-  static bool get supportsTrayMinimize => _desktopOverride ?? Platform.isWindows;
+  /// 关窗收进托盘。macOS 关窗后是驻留菜单栏（不需要开关），
+  /// Linux 没有托盘实现。
+  static bool get supportsTrayMinimize =>
+      _desktopOverride ?? (_platform == DesktopPlatform.windows);
 
   /// 静默启动：原生层要能"首帧画好先不显示，等 Dart 表态"。
-  static bool get supportsSilentStart => _desktopOverride ?? Platform.isWindows;
+  static bool get supportsSilentStart =>
+      _desktopOverride ?? (_platform == DesktopPlatform.windows);
 
   /// 守护服务：Windows 服务（SCM），其它平台没有这个东西。
-  static bool get supportsServiceGuard => _desktopOverride ?? Platform.isWindows;
+  static bool get supportsServiceGuard =>
+      _desktopOverride ?? (_platform == DesktopPlatform.windows);
 
   static bool? _desktopOverride;
 
+  static DesktopPlatform? _platformOverride;
+
+  /// 当前（或测试里模拟的）桌面平台。
+  static DesktopPlatform get _platform {
+    final DesktopPlatform? forced = _platformOverride;
+    if (forced != null) return forced;
+    if (Platform.isWindows) return DesktopPlatform.windows;
+    if (Platform.isMacOS) return DesktopPlatform.macos;
+    return DesktopPlatform.linux;
+  }
+
   /// 仅供测试注入平台能力（默认跟随当前平台）。
   static void debugSetDesktopCapabilities(bool? value) => _desktopOverride = value;
+
+  /// 仅供测试模拟"跑在某个平台上"：能力门控取决于平台，而测试机只有一种。
+  static void debugSetDesktopPlatform(DesktopPlatform? value) =>
+      _platformOverride = value;
 
   /// 兼容旧名字（早期只有悬浮球这一个开关需要门控）。
   static void debugSetSupportsFloatingBall(bool? value) =>

@@ -1,11 +1,11 @@
 {
-  "version": "1.0.30",
-  "notes": "更新弹层新增「下载源」下拉，一键更新和仅下载都能自己挑官方直连或加速镜像；「仅下载」改为下到默认下载目录，下完直接给「安装」按钮；应用名统一为 Wisp。",
-  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v1.0.30/wisp-windows-x64-1.0.30-setup.exe",
+  "version": "1.0.31",
+  "notes": "macOS 补齐桌面浮层：关掉主窗口只剩菜单栏图标时，收到文件会从右下角弹出通知卡，可以直接接收或忽略；打开「桌面悬浮球」后改为在球旁边弹气泡，进度和完成提示也在那里。",
+  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v1.0.31/wisp-windows-x64-1.0.31-setup.exe",
   "downloads": {
-    "windows": "https://github.com/yunyu697/wisp/releases/download/v1.0.30/wisp-windows-x64-1.0.30-setup.exe",
-    "macos": "https://github.com/yunyu697/wisp/releases/download/v1.0.30/wisp-macos-1.0.30.dmg",
-    "linux": "https://github.com/yunyu697/wisp/releases/download/v1.0.30/wisp-linux-x64-1.0.30.AppImage",
-    "android": "https://github.com/yunyu697/wisp/releases/download/v1.0.30/wisp-android-1.0.30.apk"
+    "windows": "https://github.com/yunyu697/wisp/releases/download/v1.0.31/wisp-windows-x64-1.0.31-setup.exe",
+    "macos": "https://github.com/yunyu697/wisp/releases/download/v1.0.31/wisp-macos-1.0.31.dmg",
+    "linux": "https://github.com/yunyu697/wisp/releases/download/v1.0.31/wisp-linux-x64-1.0.31.AppImage",
+    "android": "https://github.com/yunyu697/wisp/releases/download/v1.0.31/wisp-android-1.0.31.apk"
   }
 }

@@ -8,10 +8,14 @@ import 'package:wisp/services/settings_service.dart';
 import 'package:wisp/state/app_state.dart';
 import 'package:wisp/ui/pages/settings_page.dart';
 
-/// 依赖原生实现的设置项，只该出现在**真的实现了**的平台（当前只有 Windows）。
+/// 依赖原生实现的设置项，只该出现在**真的实现了**的平台。
 ///
 /// 这些开关之前在各平台都显示：macOS 点下去原生层回
 /// FlutterMethodNotImplemented，界面照旧切换，用户看到的是"开关点了没反应"。
+///
+/// 现在 macOS 用 `macos/Runner/WispOverlay.swift` 补齐了桌面浮层，
+/// 所以悬浮球这两个开关在 macOS 上必须回来；托盘最小化（macOS 关窗驻留
+/// 菜单栏）、静默启动、服务守护（SCM）仍然只有 Windows 有。
 void main() {
   final AppState state = AppState()
     ..settings = const WispSettings(
@@ -34,22 +38,27 @@ void main() {
     await tester.pump();
   }
 
-  tearDown(() => DesktopService.debugSetDesktopCapabilities(null));
-
-  /// 只有 Windows runner 实现了原生支持的几项。
-  const List<String> nativeOnly = <String>[
+  const List<String> floatingBallRows = <String>[
     '桌面悬浮球',
     '悬浮球展开延时',
+  ];
+
+  const List<String> windowsOnlyRows = <String>[
     '关闭时最小化到托盘',
     '静默启动',
     '服务守护',
   ];
 
+  tearDown(() {
+    DesktopService.debugSetDesktopCapabilities(null);
+    DesktopService.debugSetDesktopPlatform(null);
+  });
+
   testWidgets('不支持原生桌面能力的平台：这些开关一个都不显示', (WidgetTester tester) async {
     DesktopService.debugSetDesktopCapabilities(false);
     await pumpSettings(tester);
 
-    for (final String title in nativeOnly) {
+    for (final String title in <String>[...floatingBallRows, ...windowsOnlyRows]) {
       expect(find.text(title), findsNothing, reason: '「$title」在这个平台没有实现，不该显示');
     }
     // 纯 Dart 侧的设置必须还在——别把整组一起藏了。
@@ -61,8 +70,31 @@ void main() {
     DesktopService.debugSetDesktopCapabilities(true);
     await pumpSettings(tester);
 
-    for (final String title in nativeOnly) {
+    for (final String title in <String>[...floatingBallRows, ...windowsOnlyRows]) {
       expect(find.text(title), findsOneWidget, reason: '「$title」在 Windows 上是实现了的');
+    }
+  });
+
+  testWidgets('macOS：有悬浮球，没有托盘/静默启动/服务守护', (WidgetTester tester) async {
+    DesktopService.debugSetDesktopPlatform(DesktopPlatform.macos);
+    await pumpSettings(tester);
+
+    for (final String title in floatingBallRows) {
+      expect(find.text(title), findsOneWidget,
+          reason: '「$title」在 macOS 上有 WispOverlay 原生实现，必须显示');
+    }
+    for (final String title in windowsOnlyRows) {
+      expect(find.text(title), findsNothing,
+          reason: '「$title」在 macOS 上没有原生实现，不该显示');
+    }
+  });
+
+  testWidgets('Linux：一个原生开关都不显示', (WidgetTester tester) async {
+    DesktopService.debugSetDesktopPlatform(DesktopPlatform.linux);
+    await pumpSettings(tester);
+
+    for (final String title in <String>[...floatingBallRows, ...windowsOnlyRows]) {
+      expect(find.text(title), findsNothing, reason: '「$title」在 Linux 上没有实现');
     }
   });
 }
