@@ -224,6 +224,18 @@ class DesktopService {
     }
   }
 
+  /// 自测用：悬浮球当前不透明度系数。0.25=静置变淡，1=全不透明。
+  /// 用来客观验证"创建后静置必须自己变淡"（不依赖鼠标事件）。
+  static Future<double> debugBallDim() async {
+    try {
+      return await _channel.invokeMethod<double>('debugBallDim') ?? 1.0;
+    } on MissingPluginException {
+      return 1.0;
+    } on PlatformException {
+      return 1.0;
+    }
+  }
+
   /// 托盘图标闪烁（有新传输请求时）。
   static Future<void> setTrayFlashing(bool enabled) async {
     try {

@@ -1032,6 +1032,10 @@ bool FlutterWindow::OnCreate() {
                flutter::EncodableValue(ball_snapped_)},
           };
           result->Success(state);
+        } else if (name == "debugBallDim") {
+          // 自测用：返回悬浮球当前不透明度系数（0.25=静置变淡，1=全不透明）。
+          // 用来客观验证"创建后静置必须自己变淡"，而不是靠肉眼。
+          result->Success(static_cast<double>(ball_dim_));
         } else if (name == "debugWindows") {
           // 自测入口用：一次性拿到三类桌面窗口的可见性与屏幕矩形。
           auto describe = [](HWND hwnd) {
@@ -1620,6 +1624,10 @@ void FlutterWindow::CreateBallWindow() {
       SetTimer(ball_window_, kBallTopTimerId, kBallTopPollMs, nullptr);
   RenderBall(1, 255, 1.0f);
   ShowWindow(ball_window_, SW_SHOWNOACTIVATE);
+  // 开机自启时没有任何鼠标事件，而空闲变暗只挂在 WM_MOUSELEAVE 上——
+  // 不主动排一次，把手会一直保持全不透明，直到用户第一次把光标移上去再移开。
+  // 用户看到的就是「开机后把手不会变淡」。这里主动排上，静置 1s 后照常变淡。
+  ScheduleBallIdle();
   // 恢复的是吸附位置：展开展示几秒后照常缩回把手。
   if (ball_snapped_) {
     ball_collapse_timer_ =
@@ -1825,6 +1833,9 @@ void FlutterWindow::StepBallAnim() {
       break;
     case kBallAnimCollapse:
       RenderBall(0.0f, 255, 1.0f);
+      // 缩回把手＝进入静置态。收缩可能是 Dart 在流程结束点主动调用的
+      // （此时没有 mouse-leave 事件），所以这里自己排上空闲变淡。
+      ScheduleBallIdle();
       break;
     case kBallAnimPeekIn:
       ball_peek_ = 1.0f;
@@ -2078,6 +2089,14 @@ void FlutterWindow::UpdateBallTopmost() {
     SetWindowPos(ball_window_, HWND_TOPMOST, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     RenderBall(ball_t_, ball_alpha_, ball_scale_);
+    // 退出全屏后重新显示同样没有鼠标事件，不排空闲就会一直全不透明。
+    // 光标正好压在球上时不排——否则会把它在自己脚下压暗。
+    POINT cursor{};
+    RECT ball_rect{};
+    if (GetCursorPos(&cursor) && GetWindowRect(ball_window_, &ball_rect) &&
+        !PtInRect(&ball_rect, cursor)) {
+      ScheduleBallIdle();
+    }
     ball_last_foreground_ = GetForegroundWindow();
     return;
   }

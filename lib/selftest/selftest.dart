@@ -131,6 +131,7 @@ class SelfTestRunner {
       await _step('main_not_black_taskbar', _mainWindowNotBlackTaskbar);
       await _step('bubble_visible', _bubbleVisible);
       await _step('ball_hidden_bubble', _bubbleBesideHandle);
+      await _step('ball_dims_idle', _ballDimsWhenIdle);
     }
   }
 
@@ -732,6 +733,27 @@ class SelfTestRunner {
     if (bubble['visible'] != true) throw StateError('把手态气泡没有显示：$bubble');
     if (!_inside(bubble, all)) throw StateError('把手态气泡越界：$bubble');
     return '把手态气泡 $bubble 在工作区内';
+  }
+
+  /// 开机自启后没有任何鼠标事件，把手也必须自己变淡——否则用户看到的是
+  /// 「把手永远全不透明、悬停也不变」。变暗原本只挂在 WM_MOUSELEAVE 上，
+  /// 创建球时从不排空闲计时，自启场景就永远不触发。这里创建后静置，
+  /// 直接读原生层的不透明度系数，断言它确实降下来了（不靠肉眼）。
+  Future<String?> _ballDimsWhenIdle() async {
+    await DesktopService.setFloatingBall(true, hoverDelayMs: 300);
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    final double fresh = await DesktopService.debugBallDim();
+    // 1s 空闲延时 + 1s 淡出，留一点余量。
+    await Future<void>.delayed(const Duration(milliseconds: 2600));
+    final double idle = await DesktopService.debugBallDim();
+    await DesktopService.setFloatingBall(false);
+    if (fresh < 0.9) {
+      throw StateError('刚创建就变淡了（应保持不透明）：fresh=$fresh');
+    }
+    if (idle > 0.4) {
+      throw StateError('静置 2.9s 后把手仍不透明：idle=$idle（变淡没触发）');
+    }
+    return '创建时 opaque=$fresh → 静置后 dim=$idle';
   }
 
   Map<String, Object?> toJson() => <String, Object?>{
