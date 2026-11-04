@@ -5,6 +5,7 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
   private var statusItem: NSStatusItem?
   private var channel: FlutterMethodChannel?
   private var lastReportedVisible: Bool?
+  private var dropView: WispDropView?
 
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
@@ -20,6 +21,32 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     installStatusItem()
     setupOverlay()
     setupChannel(flutterViewController)
+    setupDropLayer(flutterViewController)
+  }
+
+  // MARK: - 拖拽发送
+
+  /// 主窗口接收从 Finder 拖进来的文件（实现见 WispDropView.swift）。
+  ///
+  /// macOS 之前完全没有这条链路：Dart 侧 `onFilesDropped` 的处理器早就写好了，
+  /// 原生层却从来不发这个事件——所以"把文件拖进窗口"什么都不会发生，
+  /// 而且不报错、不回滚，静默到看起来像没这个功能。
+  ///
+  /// 拖拽层盖在 FlutterView 上方但 `hitTest` 返回 nil，指针事件照常穿透，
+  /// 主界面的点击/滚动不受任何影响。
+  private func setupDropLayer(_ controller: FlutterViewController) {
+    let host = controller.view
+    let drop = WispDropView(frame: host.bounds)
+    drop.onDrop = { [weak self] paths in
+      // 路径是 UTF-8 的 POSIX 字符串；展开文件夹、并入待发清单都在 Dart 侧，
+      // 与 Windows 的 WM_DROPFILES 走同一条处理器。
+      self?.channel?.invokeMethod("onFilesDropped", arguments: ["paths": paths])
+    }
+    // 放到最上层：FlutterView 内部的子视图层次由 Flutter 自己维护，
+    // 插在"最后一个"的位置不可靠。
+    host.addSubview(drop, positioned: .above, relativeTo: nil)
+    drop.autoresizingMask = [.width, .height]
+    dropView = drop
   }
 
   // MARK: - 桌面浮层
@@ -73,6 +100,16 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
 
   func windowDidBecomeKey(_ notification: Notification) {
     reportWindowVisibility(true)
+  }
+
+  /// 拖拽层靠 autoresizing 跟随窗口；这里再对一次账。
+  ///
+  /// 全屏切换、从最小化恢复时 contentView 的尺寸变化不保证走 autoresizing，
+  /// 一旦尺寸没跟上，可拖区域就会缺一块——而它"缺一块"是看不出来的，
+  /// 用户只会觉得窗口某个部位放不进去。
+  func windowDidResize(_ notification: Notification) {
+    guard let drop = dropView, let host = drop.superview else { return }
+    if drop.frame != host.bounds { drop.frame = host.bounds }
   }
 
   private func reportWindowVisibility(_ visible: Bool) {

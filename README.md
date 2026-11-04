@@ -244,9 +244,21 @@ Windows 那套「托盘 + 自绘分层窗口」在 macOS 上没有对应物，1.
   每次都判失败、连发两次再放弃。
 - **收尾代次（generation）**：收起的淡出是异步的，期间又弹了新卡片时，旧的完成回调不能把新
   窗口 `orderOut` 掉——每个延迟动作都记代次，对不上就什么都不做。
-- 尚未实现：主窗口的文件拖拽（`onFilesDropped`）。拖放需要自绘 NSView 参与
-  `NSDraggingDestination`，而覆盖在 FlutterView 上的拖拽层会抢走鼠标事件，单独一轮处理。
-  `test/macos_channel_parity_test.dart` 把这条记为「已知缺口」，补上时它会失败提醒删记录。
+
+#### 主窗口拖拽发送（`macos/Runner/WispDropView.swift`）
+
+从访达把文件或文件夹拖进主窗口，会浮出一层「松手即可发送」的提示，松手后走上 `onFilesDropped`
+→ `addDroppedPaths`，与 Windows 的 `WM_DROPFILES` 是同一条 Dart 处理器（文件夹展开、去重、
+切发送页全在那边，原生层只管交路径）。
+
+难点只有一个：这一层盖在 FlutterView 上面，凭什么不挡点击。答案是**拖拽与鼠标走两条不同的派发
+路径**——拖拽会话里 AppKit 直接枚举注册过 `registerForDraggedTypes` 的 view，不走 `hitTest`；
+普通鼠标事件才走 `hitTest`。所以这一层 `hitTest` 一律返回 `nil`：指针事件穿透给 Flutter，
+拖拽照收。`test/macos_channel_parity_test.dart` 用正则盯着这个 `nil`，改成 `super.hitTest(...)`
+会立刻失败——那种改法下拖拽看起来还是好的，主界面却整块点不动，是最难靠肉眼发现的一类回归。
+
+路径在 `draggingEntered` 时取一次缓存，`draggingUpdated` 只读缓存（拖几百个文件时每次重新
+反序列化 URL 会明显发涩），松手时再取一次以当时真实内容为准。
 
 ### 发现机制（与官方 LocalSend 互通）
 

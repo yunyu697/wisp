@@ -16,6 +16,8 @@ void main() {
   final File service = File('lib/services/desktop_service.dart');
   final File mainWindow = File('macos/Runner/MainFlutterWindow.swift');
   final File overlay = File('macos/Runner/WispOverlay.swift');
+  final File dropView = File('macos/Runner/WispDropView.swift');
+  final File pbxproj = File('macos/Runner.xcodeproj/project.pbxproj');
 
   /// 只有 Windows 实现、且 macOS 设置页已经隐藏了对应开关的能力。
   /// 加进来的每一项都必须说清楚为什么不用跨平台。
@@ -38,6 +40,7 @@ void main() {
     'onBallPosition',
     'onBubbleAction',
     'onBubbleTimeout',
+    'onFilesDropped',
     'onToastClicked',
     'onWindowVisibility',
     'onWindowRestored',
@@ -46,11 +49,9 @@ void main() {
   /// 已知缺口：Dart 在监听，但 macOS 原生层还不发。
   ///
   /// 留在这里而不是从断言里删掉：缺口是"已知"的，不是"忘了"的。
-  const Map<String, String> missingEvents = <String, String>{
-    'onFilesDropped': 'macOS 主窗口还没接文件拖拽。拖放需要自绘 NSView 参与 '
-        'NSDraggingDestination，而覆盖在 FlutterView 上的拖拽层会抢走鼠标事件，'
-        '风险高，单独一轮处理。',
-  };
+  /// 目前没有——`onFilesDropped` 已随 WispDropView 补齐。将来再出现
+  /// 新的缺口，记到这里，补上时测试会失败并提醒删除记录。
+  const Map<String, String> missingEvents = <String, String>{};
 
   bool skip(File file) {
     if (!file.existsSync()) {
@@ -117,5 +118,41 @@ void main() {
     expect(source.contains('"visible"'), isTrue);
     expect(source.contains('"drawn"'), isTrue);
     expect(source.contains('surfaceStatus'), isTrue);
+  });
+
+  test('拖拽层必须让指针事件穿透，否则主界面整块点不动', () {
+    if (skip(dropView)) return;
+    final String source = dropView.readAsStringSync();
+
+    // 拖拽派发不走 hitTest，鼠标事件走。所以"盖在上面还能收拖拽、不挡点击"
+    // 的唯一支点就是 hitTest 直接返回 nil。
+    //
+    // 一旦有人改成 super.hitTest(...)，拖拽看上去仍然正常，主界面却变成一张
+    // 点不动的图——坏得不彻底、又全都在主路径上，必须在提交前挡住。
+    final RegExp passthrough = RegExp(
+        r'override func hitTest\([^)]*\)\s*->\s*NSView\?\s*\{\s*nil\s*\}');
+    expect(passthrough.hasMatch(source), isTrue,
+        reason: 'WispDropView.hitTest 必须直接返回 nil：它盖在 FlutterView 上，'
+            '一旦参与 hitTest 就会吞掉主界面的所有点击、滚动与悬停');
+
+    // 没注册拖拽类型，draggingEntered 永远不会被调用。
+    expect(source.contains('registerForDraggedTypes'), isTrue);
+
+    // 接住拖拽却从不回调 = 把用户拖进来的文件静默丢掉。
+    expect(source.contains('onDrop?('), isTrue,
+        reason: 'performDragOperation 必须真的把路径交回 Dart');
+  });
+
+  test('新增的原生文件必须真的进了编译列表', () {
+    if (skip(pbxproj)) return;
+    final String source = pbxproj.readAsStringSync();
+    for (final String name in <String>[
+      'WispOverlay.swift',
+      'WispDropView.swift',
+    ]) {
+      expect(source.contains('$name in Sources'), isTrue,
+          reason: '$name 没进 Runner target 的 Compile Sources：文件写了、'
+              '测试也绿了，但应用里根本没有这段代码');
+    }
   });
 }
