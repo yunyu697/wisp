@@ -221,6 +221,33 @@ MSI 定义在 `packaging/windows/wisp.wxs`（WiX v5），由 CI 用
 - **横竖屏自适应**：竖屏保持底部导航 + 单栏（手机观感）；横屏 / 宽窗口自动切到**左侧导航栏 + 限宽居中的多栏布局**——不是把元素拉宽，而是重新排布：附近页设备变两列网格、发送页左「发什么」右「发给谁」双栏、设置页分组两列、传输页内容居中限宽。判定见 `lib/ui/responsive.dart`（`isWideLayout`，以 orientation 为准）。
 - **服务守护**（设置 → 系统 → 服务守护）：可选安装一个 Windows 服务（WispKeepAlive）。应用被误关、崩溃时自动拉起，开机登录后自动恢复；托盘「退出」属于用户主动行为，服务会尊重（写入标记文件，不再拉起），下次手动启动或重新登录时自动解除。安装/卸载各触发一次 UAC 授权。装好之后会多出一行「**重启守护服务**」——服务卡在停止中、或应用被反复拉起时用它（`sc stop` 之后要等约 3 秒 SCM 才允许 `sc start`，代码里用 `ping -n 4` 等这段，比 `timeout` 命令在无控制台时可靠）。
 
+### 桌面端特性（macOS）
+
+Windows 那套「托盘 + 自绘分层窗口」在 macOS 上没有对应物，1.0.31 用 AppKit 重新做了一遍，
+实现集中在 `macos/Runner/WispOverlay.swift`，语义与 Windows 逐条对齐（同一批通道方法名、
+同一套事件名、同一组卡片尺寸与存活时间）。
+
+- **关窗驻留菜单栏**：关掉主窗口后 `setActivationPolicy(.accessory)`，Dock 图标消失，入口只剩
+  菜单栏图标（模板图按应用图标的构图重画，深浅色菜单栏自动适配）；有新请求时图标变红。
+- **通知卡**：`NSPanel`（`borderless` + `nonactivatingPanel` + `statusBar` 层级 +
+  `canJoinAllSpaces/fullScreenAuxiliary`），右下角淡入，询问/进度/完成/取消四种模式，
+  存活 30s / 8s / 3s，按钮点击回调与 Windows 完全相同（`accept` / `dismiss` / `openFolder`）。
+  淡入只改 `alphaValue`、**不动位置**——位置一动，动画丢帧就会让卡片停在屏幕外，
+  这正是 Windows 上「通知要第二次才出现」的成因，不在这里重犯。
+- **悬浮球**：可拖动、拖到工作区边缘 32pt 内自动吸附、静置 1s 淡到 25%、悬停 0.12s 恢复、
+  鼠标离开 0.7s 收成贴边把手、有请求时展开并播放心跳。**窗口尺寸就是可见形状的尺寸**：
+  macOS 的透明窗口边界照样会吃掉点击，窗口留透明边距等于在球周围放一圈点不动的死区。
+- **通知分流与 Windows 共用同一份判定**（`lib/services/notification_router.dart`），
+  所以三个平台「什么时候弹卡片、什么时候弹气泡」不会各说各话。
+- **状态回传**：`windowState` 带 `ballEnabled/ballExpanded/ballSnapped`，`surfaceStatus` 带
+  `visible` + `drawn`。Dart 的「发 → 查 → 没出来就重发」闭环依赖这两个字段，缺一个就会
+  每次都判失败、连发两次再放弃。
+- **收尾代次（generation）**：收起的淡出是异步的，期间又弹了新卡片时，旧的完成回调不能把新
+  窗口 `orderOut` 掉——每个延迟动作都记代次，对不上就什么都不做。
+- 尚未实现：主窗口的文件拖拽（`onFilesDropped`）。拖放需要自绘 NSView 参与
+  `NSDraggingDestination`，而覆盖在 FlutterView 上的拖拽层会抢走鼠标事件，单独一轮处理。
+  `test/macos_channel_parity_test.dart` 把这条记为「已知缺口」，补上时它会失败提醒删记录。
+
 ### 发现机制（与官方 LocalSend 互通）
 
 1. **组播 announce**：向 `224.0.0.167:53317` 广播自己的信息（UDP JSON），启动时连发 5 次再转 3 秒心跳；
