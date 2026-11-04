@@ -49,6 +49,32 @@ Name: "{group}\{#AppName}"; Filename: "{app}\wisp.exe"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\wisp.exe"; Tasks: desktopicon
 
 [Run]
-; No skipifsilent: after an in-app silent update finishes, the new build
-; starts itself -- the user should not have to hunt for the shortcut again.
-Filename: "{app}\wisp.exe"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall
+; Interactive install: keep the familiar "launch app" checkbox on the finish page.
+; skipifsilent is required here -- see the silent entry below.
+Filename: "{app}\wisp.exe"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent runasoriginaluser
+
+; Silent install (the in-app "one-click update" runs this installer with /SILENT):
+; start the new build automatically. This entry must NOT carry the postinstall
+; flag -- /SILENT never shows the finish page, so postinstall entries are never
+; executed and the app would simply never come back after an update.
+; runasoriginaluser: the setup itself is elevated, but the app must not run as admin.
+Filename: "{app}\wisp.exe"; Flags: nowait runasoriginaluser; Check: WizardSilent
+
+[Code]
+// The in-app updater starts this installer while Wisp is still running. Wisp
+// hides to the tray on WM_CLOSE instead of exiting, so Inno's CloseApplications
+// (Restart Manager) cannot stop it and wisp.exe stays locked -- a silent install
+// would then abort or leave a half-updated copy. Kill it explicitly before the
+// files are copied; [Run] brings the new build back afterwards.
+//
+// No /T: the elevated installer is created by the AppInfo service, not as a
+// child of Wisp, so killing the tree is unnecessary -- and would be dangerous
+// if Windows ever reparented it.
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+begin
+  if CurStep = ssInstall then
+    Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM wisp.exe', '',
+         SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;

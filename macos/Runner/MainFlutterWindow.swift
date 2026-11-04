@@ -50,6 +50,8 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
     }
     button.image = Self.menuBarImage()
     button.imagePosition = .imageOnly
+    // 图标按自身 20pt 画，别再让按钮二次压缩（默认就是这么设的，写明防误改）。
+    button.imageScaling = .scaleProportionallyDown
     button.toolTip = "Wisp — 局域网传输"
 
     let menu = NSMenu()
@@ -68,38 +70,46 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
   /// 菜单栏图标：把应用图标（青绿卡片 + 两条白线 + 珊瑚圆点）压成单色模板版。
   ///
   /// 以前用 SF Symbol 的 `arrow.up.arrow.down.circle`：它跟应用图标毫无关系，
-  /// 细线条 + 大留白，18pt 下看着又小又认不出。这里按应用图标自己的构图重画：
+  /// 细线条 + 大留白，放在菜单栏里又小又认不出。这里按应用图标自己的构图重画：
   /// 实心圆角卡片（=那张文件卡）+ 两条挖空的白线 + 右上角独立圆点（=珊瑚点）。
   /// 模板图交给系统着色，深浅色菜单栏都自动适配，提醒态只需要换 tint。
   ///
+  /// 尺寸：画布 20pt、内容几乎画满（bbox 18×18）。
+  /// 早先的 18pt 版里实心卡片只有 11.7×11.8，四周还留着大片空白，
+  /// 摆在一排系统图标中间明显偏小、不协调——菜单栏图标的分量主要来自
+  /// 实心块的面积，而不是外框大小，所以这里把卡片直接放大到 15.2×14.0。
+  ///
   /// 用 drawingHandler 而不是预渲染位图：Retina 上按 2x 重新光栅化，
-  /// 不会像「把 1024 缩到 18」那样糊成一团。
+  /// 不会像「把 1024 缩到 20」那样糊成一团。
   private static func menuBarImage() -> NSImage {
-    let side: CGFloat = 18
+    let side: CGFloat = 20
     let image = NSImage(size: NSSize(width: side, height: side), flipped: true) { _ in
-      // 设计稿按 18×18 画，这里等比缩放（外部若改 side，图形跟着走）。
-      let u = side / 18.0
+      // 设计稿按 20×20 画，这里等比缩放（外部若改 side，图形跟着走）。
+      let u = side / 20.0
 
-      // 卡片
-      let card = NSRect(x: 1.15 * u, y: 4.4 * u, width: 11.7 * u, height: 11.8 * u)
+      // 卡片（= 应用图标里那张文件卡）
+      let card = NSRect(x: 1.0 * u, y: 5.0 * u, width: 15.2 * u, height: 14.0 * u)
       NSColor.black.setFill()
-      NSBezierPath(roundedRect: card, xRadius: 3.4 * u, yRadius: 3.4 * u).fill()
+      NSBezierPath(roundedRect: card, xRadius: 4.2 * u, yRadius: 4.2 * u).fill()
 
       // 两条白线 + 右上角圆点：模板图用 alpha 当遮罩，所以这里是"挖空"
       // （clear 混合），不是画白色——画白色在深色菜单栏里会变成实心块。
+      //
+      // 圆点必须与卡片上沿相切（同一 y），不能压进卡片：clear 会把卡片
+      // 咬掉一块，变成一个洞。
       guard let ctx = NSGraphicsContext.current?.cgContext else { return true }
       ctx.setBlendMode(.clear)
       let bars: [(CGFloat, CGFloat, CGFloat)] = [
-        (9.0, 6.9, 1.85),   // (y, 长度, 粗细)
-        (11.95, 4.9, 1.85),
+        (8.0, 11.7, 2.2),   // (y, 长度, 粗细)
+        (14.0, 6.4, 2.2),
       ]
       for (y, length, thick) in bars {
-        let bar = NSRect(x: 3.25 * u, y: y * u, width: length * u, height: thick * u)
+        let bar = NSRect(x: 3.75 * u, y: y * u, width: length * u, height: thick * u)
         NSBezierPath(roundedRect: bar, xRadius: thick * u / 2,
                      yRadius: thick * u / 2).fill()
       }
-      NSBezierPath(ovalIn: NSRect(x: 13.75 * u, y: 0.9 * u,
-                                  width: 3.4 * u, height: 3.4 * u)).fill()
+      NSBezierPath(ovalIn: NSRect(x: 15.0 * u, y: 1.0 * u,
+                                  width: 4.0 * u, height: 4.0 * u)).fill()
       ctx.setBlendMode(.normal)
       return true
     }

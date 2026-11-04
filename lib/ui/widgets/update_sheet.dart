@@ -376,24 +376,34 @@ class _UpdateSheetState extends State<UpdateSheet> {
     }
   }
 
-  /// 一键更新：下载 + 自动安装。
+  /// 一键更新：下载 + 自动安装 + 自动重启。
   Future<void> _autoUpdate() async {
     final String? path = await _runDownload(verified: true);
     if (path == null || !mounted) return;
     setState(() => _phase = _Phase.installing);
+    UpdateInstallOutcome outcome;
     try {
-      final UpdateInstallOutcome outcome = await WispUpdateInstaller.install(path);
-      if (!mounted) return;
-      setState(() {
-        _phase = outcome.ok ? _Phase.done : _Phase.failed;
-        _resultText = outcome.message;
-      });
+      outcome = await WispUpdateInstaller.install(path);
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _phase = _Phase.failed;
         _resultText = '安装失败：$e';
       });
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _phase = outcome.ok ? _Phase.done : _Phase.failed;
+      _resultText = outcome.message;
+    });
+    // macOS 要自己完成重启（Windows 由安装器拉起新版，restartPath 为 null）。
+    // 留一点时间让用户看清"正在重启"，否则窗口突然消失像是崩了。
+    final String? restartTo = outcome.restartPath;
+    if (outcome.ok && restartTo != null) {
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      if (!mounted) return;
+      await WispUpdateInstaller.restartInto(restartTo);
     }
   }
 

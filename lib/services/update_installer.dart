@@ -5,8 +5,9 @@
 ///
 /// 自动安装的平台支持（有意为之，不是偷懒）：
 /// · Windows —— 启动 Inno Setup 安装器（/SILENT），UAC 确认后全程无感，
-///   装完自动拉起新版（wisp.iss 的 [Run] 去掉了 skipifsilent）；
-/// · macOS —— hdiutil 挂载 dmg、拷进 /Applications，完成后提示重启生效；
+///   装完自动拉起新版（wisp.iss 的静默安装启动项走 WizardSilent 判断，
+///   不能用 postinstall —— /SILENT 不显示完成页，那条永远不会执行）；
+/// · macOS —— hdiutil 挂载 dmg、替换 /Applications 里的应用，然后自动重启；
 ///   /Applications 无写权限时退回"给你打开 dmg 自己拖"；
 /// · Linux —— 发行版包管理器各异（deb/rpm/AppImage/tar），强上 pkexec
 ///   风险大于收益，只做"仅下载"；
@@ -22,17 +23,22 @@ import 'desktop_service.dart';
 import 'update_service.dart';
 
 /// 一次安装尝试的结果。`ok` 只表示"我们这边能做的都做成了"——
-/// Windows 的 UAC 确认、macOS 的重启生效仍需要用户接一下。
+/// Windows 的 UAC 确认仍需要用户接一下（之后全自动）。
 class UpdateInstallOutcome {
   const UpdateInstallOutcome({
     required this.ok,
     required this.message,
     this.installerPath,
+    this.restartPath,
   });
 
   final bool ok;
   final String message;
   final String? installerPath;
+
+  /// 非空表示：装完了，应该重启到这个 .app（macOS）。
+  /// Windows 的拉起由安装器自己负责，所以这里一直是 null。
+  final String? restartPath;
 }
 
 class WispUpdateInstaller {
@@ -214,7 +220,7 @@ class WispUpdateInstaller {
   }
 
   // ---------------------------------------------------------------------
-  // macOS：挂载 dmg -> 拷贝到 /Applications -> 卸载镜像。
+  // macOS：挂载 dmg -> 替换 /Applications 里的应用 -> 卸载镜像 -> 重启。
   // ---------------------------------------------------------------------
 
   static Future<UpdateInstallOutcome> _installMacos(String dmgPath) async {
@@ -264,22 +270,84 @@ class WispUpdateInstaller {
       );
     }
 
+    final String bundleName = appBundle.uri.pathSegments
+        .lastWhere((String s) => s.isNotEmpty, orElse: () => 'wisp.app');
+    final String target = '/Applications/$bundleName';
+    // 先整包拷到旁边的暂存名，再整体替换。
+    //
+    // 不能直接 `cp -R -f src.app /Applications/`：目标已存在时 BSD cp 会把新包
+    // 塞进旧包内部（/Applications/Wisp.app/Wisp.app），替换后主程序仍是旧版本，
+    // 用户会以为"更新没生效"。用 ditto 而不是 cp，是为了保符号链接与权限位
+    // （Flutter 的 .app 里有 Frameworks 软链，cp -R 会跟进去拷成实体目录）。
+    final String staging = '/Applications/.$bundleName.incoming';
     final ProcessResult copy =
-        await Process.run('cp', <String>['-R', '-f', appBundle.path, '/Applications/']);
-    // 无论拷没拷成，镜像都要卸掉，不留空卷。
+        await Process.run('ditto', <String>['--noqtn', appBundle.path, staging]);
+    // 无论成没成，镜像都要卸掉，不留空卷。
     await Process.run('hdiutil', <String>['detach', volume, '-force']);
 
-    if (copy.exitCode != 0) {
+    Future<UpdateInstallOutcome> bail(String detail) async {
+      await Process.run('rm', <String>['-rf', staging]);
+      // 自动装不了至少别让用户自己去满硬盘找安装包。
+      await _openPath(dmgPath);
       return UpdateInstallOutcome(
         ok: false,
-        message: '写入「应用程序」失败（${copy.stderr}）。'
-            '常见原因是当前账号没有权限：请手动把 dmg 里的应用拖进「应用程序」',
+        message: '$detail。已经帮你打开镜像：把里面的应用拖进「应用程序」即可',
         installerPath: dmgPath,
       );
     }
-    return const UpdateInstallOutcome(
+
+    // 退出码和目录存在性都要看：ditto 失败时也可能留下半个目录。
+    if (copy.exitCode != 0 || !Directory(staging).existsSync()) {
+      final String detail = copy.stderr.toString().trim();
+      return bail('写入「应用程序」失败'
+          '${detail.isEmpty ? '（无权限或磁盘空间不足）' : '（$detail）'}');
+    }
+    final ProcessResult remove =
+        await Process.run('rm', <String>['-rf', target]);
+    if (remove.exitCode != 0) {
+      return bail('替换旧版失败（${remove.stderr}）');
+    }
+    final ProcessResult move =
+        await Process.run('mv', <String>[staging, target]);
+    if (move.exitCode != 0) {
+      return bail('安装到「应用程序」失败（${move.stderr}）');
+    }
+    return UpdateInstallOutcome(
       ok: true,
-      message: '已更新到「应用程序」。退出并重新打开 Wisp 即可生效',
+      message: '已更新到「应用程序」，正在重启 Wisp…',
+      installerPath: dmgPath,
+      restartPath: target,
     );
+  }
+
+  /// 把刚装好的应用重新拉起来，然后退出当前进程。
+  ///
+  /// 不能直接 open：本进程还占着 53317 —— 新旧实例会撞端口，新版直接报
+  /// "无法占用端口"。所以交给一个脱离的子 shell：先等本进程真正退出，
+  /// 再 open。启动的是 /Applications 里刚替换好的那一份，不是旧的可执行文件。
+  static Future<void> restartInto(String appPath) async {
+    if (Platform.isMacOS) {
+      await Process.start(
+        '/bin/sh',
+        <String>[
+          '-c',
+          // 原始字符串：`$1` 是 shell 的位置参数，不能被 Dart 当插值吃掉。
+          r'sleep 1.2; exec /usr/bin/open -n "$1"',
+          'wisp-relaunch', // $0
+          appPath, // $1（走位置参数，路径里有空格或引号都不用转义）
+        ],
+        mode: ProcessStartMode.detached,
+      );
+    }
+    exit(0);
+  }
+
+  /// 用系统默认方式打开一个本地文件（挂载失败的 dmg 兜底用）。
+  static Future<void> _openPath(String path) async {
+    try {
+      await Process.run('open', <String>[path]);
+    } catch (_) {
+      // 打不开就算了，消息里已经带了路径。
+    }
   }
 }

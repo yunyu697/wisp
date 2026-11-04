@@ -9,10 +9,17 @@ class WispReleaseNotes {
   const WispReleaseNotes._();
 
   /// 当前应用版本（与 pubspec.yaml 的 `version:` 保持一致）。
-  static const String currentVersion = '1.0.28';
+  static const String currentVersion = '1.0.29';
 
   /// 新版本在前，设置页按这个顺序展示。
   static const List<WispReleaseEntry> entries = <WispReleaseEntry>[
+    WispReleaseEntry(version: '1.0.29', changes: <String>[
+      '修复更新装完后应用不会自己重新启动：Windows 的启动项绑在「安装完成页」上，而一键更新用的是静默安装、根本不显示那一页，所以装完就没下文；现在静默安装结束会直接把新版拉起来',
+      'Windows 更新前会先关掉还在运行的旧版（它平时关窗口只是缩到托盘，安装程序关不掉它，文件一直被占用）',
+      'macOS 一键更新装完会自动重启，不用再手动关掉再打开',
+      '修复 macOS 一键更新可能「装着装着还是旧版本」：原先直接覆盖拷贝，当「应用程序」里已有同名应用时，新包会被塞进旧包内部',
+      'macOS 菜单栏图标放大：原来实心部分只有一小块、四周留白多，在一排系统图标里明显偏小，现在按菜单栏标准尺寸画满',
+    ]),
     WispReleaseEntry(version: '1.0.28', changes: <String>[
       '修复开机自启后，悬浮球吸附成的把手一直保持全不透明、把鼠标移上去也不变淡：变淡原来只在「鼠标离开」时才启动，开机时没有鼠标事件，就永远不会触发；现在创建小球和缩回把手时都会主动排上空闲变淡',
     ]),
