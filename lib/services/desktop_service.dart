@@ -47,23 +47,35 @@ class DesktopService {
 
   static const MethodChannel _channel = MethodChannel('wisp/desktop');
 
-  /// 该平台有没有原生悬浮球实现。
+  /// 这些设置项背后都要原生实现，而**只有 Windows 的 runner 有**。
   ///
-  /// **只有 Windows 有**：它是一个自绘的分层窗口（`WS_EX_LAYERED` +
-  /// `UpdateLayeredWindow`），大小、吸附、气泡都在 runner 的 C++ 里画。
+  /// Windows 侧是一个自绘分层窗口 + 托盘图标 + Windows 服务；macOS 只实现了
+  /// 窗口/菜单栏那几条（`showWindow` / `windowState` / `setTrayFlashing`），
+  /// 其余方法一律回 `FlutterMethodNotImplemented`；Linux runner 连通道都没接。
   ///
-  /// macOS 的 `wisp/desktop` 通道只实现了窗口/菜单栏那部分，`setFloatingBall`
-  /// 直接回 `FlutterMethodNotImplemented`；Linux 根本没人实现；Android 也没有
-  /// 对得上的悬浮窗形态。设置页据此隐藏开关——**显示一个点了没反应的开关，
-  /// 比不显示更糟**（用户会以为功能坏了，反复开关）。
+  /// 设置页据此隐藏开关：**一个点了没反应的开关比没有更糟**——用户会以为
+  /// 功能坏了，反复开关、然后来信反馈"没效果"。
   static bool get supportsFloatingBall =>
-      _supportsFloatingBallOverride ?? Platform.isWindows;
+      _desktopOverride ?? Platform.isWindows;
 
-  static bool? _supportsFloatingBallOverride;
+  /// 关窗收进托盘（macOS 关窗后靠菜单栏驻留，不需要这个开关；
+  /// Linux 没有托盘实现）。
+  static bool get supportsTrayMinimize => _desktopOverride ?? Platform.isWindows;
+
+  /// 静默启动：原生层要能"首帧画好先不显示，等 Dart 表态"。
+  static bool get supportsSilentStart => _desktopOverride ?? Platform.isWindows;
+
+  /// 守护服务：Windows 服务（SCM），其它平台没有这个东西。
+  static bool get supportsServiceGuard => _desktopOverride ?? Platform.isWindows;
+
+  static bool? _desktopOverride;
 
   /// 仅供测试注入平台能力（默认跟随当前平台）。
+  static void debugSetDesktopCapabilities(bool? value) => _desktopOverride = value;
+
+  /// 兼容旧名字（早期只有悬浮球这一个开关需要门控）。
   static void debugSetSupportsFloatingBall(bool? value) =>
-      _supportsFloatingBallOverride = value;
+      _desktopOverride = value;
 
   /// 原生层推回来的事件。AppState 启动时注册一次。
   static void Function(String event, Map<Object?, Object?> args)? _eventHandler;

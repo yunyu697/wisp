@@ -8,10 +8,10 @@ import 'package:wisp/services/settings_service.dart';
 import 'package:wisp/state/app_state.dart';
 import 'package:wisp/ui/pages/settings_page.dart';
 
-/// 悬浮球开关只该出现在**真的实现了**悬浮球的平台（当前只有 Windows）。
+/// 依赖原生实现的设置项，只该出现在**真的实现了**的平台（当前只有 Windows）。
 ///
-/// 之前 macOS / Android 上也显示这个开关，点下去原生层回
-/// FlutterMethodNotImplemented，界面照旧切换——用户看到的是"开关点了没反应"。
+/// 这些开关之前在各平台都显示：macOS 点下去原生层回
+/// FlutterMethodNotImplemented，界面照旧切换，用户看到的是"开关点了没反应"。
 void main() {
   final AppState state = AppState()
     ..settings = const WispSettings(
@@ -34,24 +34,35 @@ void main() {
     await tester.pump();
   }
 
-  tearDown(() => DesktopService.debugSetSupportsFloatingBall(null));
+  tearDown(() => DesktopService.debugSetDesktopCapabilities(null));
 
-  testWidgets('不支持悬浮球的平台：两条悬浮球设置都不显示', (WidgetTester tester) async {
-    DesktopService.debugSetSupportsFloatingBall(false);
+  /// 只有 Windows runner 实现了原生支持的几项。
+  const List<String> nativeOnly = <String>[
+    '桌面悬浮球',
+    '悬浮球展开延时',
+    '关闭时最小化到托盘',
+    '静默启动',
+    '服务守护',
+  ];
+
+  testWidgets('不支持原生桌面能力的平台：这些开关一个都不显示', (WidgetTester tester) async {
+    DesktopService.debugSetDesktopCapabilities(false);
     await pumpSettings(tester);
 
-    expect(find.text('桌面悬浮球'), findsNothing);
-    expect(find.text('悬浮球展开延时'), findsNothing);
-    // 同组的其它设置必须还在——别把整组一起藏了。
-    expect(find.text('关闭时最小化到托盘'), findsOneWidget);
-    expect(find.text('静默启动'), findsOneWidget);
+    for (final String title in nativeOnly) {
+      expect(find.text(title), findsNothing, reason: '「$title」在这个平台没有实现，不该显示');
+    }
+    // 纯 Dart 侧的设置必须还在——别把整组一起藏了。
+    expect(find.text('自动接收'), findsOneWidget);
+    expect(find.text('保存位置'), findsOneWidget);
   });
 
-  testWidgets('支持悬浮球的平台：两条设置照常显示', (WidgetTester tester) async {
-    DesktopService.debugSetSupportsFloatingBall(true);
+  testWidgets('Windows：原生桌面能力的开关照常显示', (WidgetTester tester) async {
+    DesktopService.debugSetDesktopCapabilities(true);
     await pumpSettings(tester);
 
-    expect(find.text('桌面悬浮球'), findsOneWidget);
-    expect(find.text('悬浮球展开延时'), findsOneWidget);
+    for (final String title in nativeOnly) {
+      expect(find.text(title), findsOneWidget, reason: '「$title」在 Windows 上是实现了的');
+    }
   });
 }

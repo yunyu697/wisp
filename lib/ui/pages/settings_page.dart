@@ -216,24 +216,30 @@ class SettingsPage extends StatelessWidget {
               _Group(
                 title: '系统',
                 children: <Widget>[
-                  _SettingRow(
-                    icon: Icons.close_rounded,
-                    title: '关闭时最小化到托盘',
-                    subtitle: '点右上角关闭只收进托盘，后台继续接收文件',
-                    trailing: Switch(
-                      value: state.settings.minimizeToTray,
-                      onChanged: state.setMinimizeToTray,
+                  // 下面这几项依赖原生实现（托盘 / 首帧显隐 / Windows 服务 /
+                  // 悬浮球），目前只有 Windows runner 有。其余平台显示出来
+                  // 只会让人反复点——macOS 关窗本来就会驻留菜单栏，不需要这个
+                  // 开关；Linux 连通道都没接。
+                  if (DesktopService.supportsTrayMinimize)
+                    _SettingRow(
+                      icon: Icons.close_rounded,
+                      title: '关闭时最小化到托盘',
+                      subtitle: '点右上角关闭只收进托盘，后台继续接收文件',
+                      trailing: Switch(
+                        value: state.settings.minimizeToTray,
+                        onChanged: state.setMinimizeToTray,
+                      ),
                     ),
-                  ),
-                  _SettingRow(
-                    icon: Icons.visibility_off_rounded,
-                    title: '静默启动',
-                    subtitle: '启动时不显示主窗口，只在托盘里等着收文件（适合开机自启）',
-                    trailing: Switch(
-                      value: state.settings.silentStart,
-                      onChanged: state.setSilentStart,
+                  if (DesktopService.supportsSilentStart)
+                    _SettingRow(
+                      icon: Icons.visibility_off_rounded,
+                      title: '静默启动',
+                      subtitle: '启动时不显示主窗口，只在托盘里等着收文件（适合开机自启）',
+                      trailing: Switch(
+                        value: state.settings.silentStart,
+                        onChanged: state.setSilentStart,
+                      ),
                     ),
-                  ),
                   // 悬浮球只有 Windows 有原生实现（自绘分层窗口），
                   // 其余平台显示开关等于给一个点了没反应的按钮。
                   if (DesktopService.supportsFloatingBall) ...<Widget>[
@@ -254,64 +260,66 @@ class SettingsPage extends StatelessWidget {
                       onTap: () => _pickBallDelay(context, state),
                     ),
                   ],
-                  _SettingRow(
-                    icon: Icons.health_and_safety_rounded,
-                    title: '服务守护',
-                    subtitle: _serviceSubtitle(state),
-                    trailing: state.serviceBusy
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2.2),
-                          )
-                        : Switch(
-                            value: state.serviceStatus != 0,
-                            onChanged: (bool install) async {
-                              final bool ok = await state.setServiceGuard(install);
-                              if (!ok && context.mounted) {
-                                ScaffoldMessenger.of(context)
-                                  ..hideCurrentSnackBar()
-                                  ..showSnackBar(const SnackBar(
-                                    content: Text(
-                                        '没有完成：需要管理员授权，或已安装但仍在停止中'),
-                                  ));
-                              }
-                            },
-                          ),
-                  ),
-                  // 只在已安装时出现：没装服务就没有"重启"这回事。
-                  if (state.serviceStatus != 0)
+                  if (DesktopService.supportsServiceGuard) ...<Widget>[
                     _SettingRow(
-                      icon: Icons.restart_alt_rounded,
-                      title: '重启守护服务',
-                      subtitle: state.serviceBusy
-                          ? '正在重启…'
-                          : '服务卡在停止中、或应用被反复拉起时用它',
+                      icon: Icons.health_and_safety_rounded,
+                      title: '服务守护',
+                      subtitle: _serviceSubtitle(state),
                       trailing: state.serviceBusy
                           ? const SizedBox(
                               width: 22,
                               height: 22,
                               child: CircularProgressIndicator(strokeWidth: 2.2),
                             )
-                          : Icon(
-                              Icons.chevron_right_rounded,
-                              size: 20,
-                              color: WispColors.secondaryText(context),
+                          : Switch(
+                              value: state.serviceStatus != 0,
+                              onChanged: (bool install) async {
+                                final bool ok = await state.setServiceGuard(install);
+                                if (!ok && context.mounted) {
+                                  ScaffoldMessenger.of(context)
+                                    ..hideCurrentSnackBar()
+                                    ..showSnackBar(const SnackBar(
+                                      content: Text(
+                                          '没有完成：需要管理员授权，或已安装但仍在停止中'),
+                                    ));
+                                }
+                              },
                             ),
-                      onTap: state.serviceBusy
-                          ? null
-                          : () async {
-                              final bool ok = await state.restartServiceGuard();
-                              if (!context.mounted) return;
-                              ScaffoldMessenger.of(context)
-                                ..hideCurrentSnackBar()
-                                ..showSnackBar(SnackBar(
-                                  content: Text(ok
-                                      ? '守护服务已重启'
-                                      : '没有完成：需要管理员授权，或服务仍在停止中'),
-                                ));
-                            },
                     ),
+                    // 只在已安装时出现：没装服务就没有"重启"这回事。
+                    if (state.serviceStatus != 0)
+                      _SettingRow(
+                        icon: Icons.restart_alt_rounded,
+                        title: '重启守护服务',
+                        subtitle: state.serviceBusy
+                            ? '正在重启…'
+                            : '服务卡在停止中、或应用被反复拉起时用它',
+                        trailing: state.serviceBusy
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(strokeWidth: 2.2),
+                              )
+                            : Icon(
+                                Icons.chevron_right_rounded,
+                                size: 20,
+                                color: WispColors.secondaryText(context),
+                              ),
+                        onTap: state.serviceBusy
+                            ? null
+                            : () async {
+                                final bool ok = await state.restartServiceGuard();
+                                if (!context.mounted) return;
+                                ScaffoldMessenger.of(context)
+                                  ..hideCurrentSnackBar()
+                                  ..showSnackBar(SnackBar(
+                                    content: Text(ok
+                                        ? '守护服务已重启'
+                                        : '没有完成：需要管理员授权，或服务仍在停止中'),
+                                  ));
+                              },
+                      ),
+                  ],
                 ],
               ),
               _Group(
