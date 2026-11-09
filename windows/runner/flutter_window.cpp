@@ -28,6 +28,92 @@ constexpr UINT kTrayMessage = WM_APP + 1;
 constexpr UINT kTrayCommandShow = 1001;
 constexpr UINT kTrayCommandQuit = 1002;
 
+// ---------------------------------------------------------------------------
+// 开机启动（HKCU Run 项）
+// ---------------------------------------------------------------------------
+
+// 用 HKCU 而不是 HKLM：登录自启不需要管理员权限，普通用户就能开关，
+// 不会像"服务守护"那样弹 UAC。卸载程序时这条值由安装器负责清理。
+constexpr wchar_t kAutoStartRunKey[] =
+    L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+constexpr wchar_t kAutoStartValueName[] = L"Wisp";
+
+std::wstring CurrentExecutablePath() {
+  std::wstring path(MAX_PATH, L'\0');
+  for (;;) {
+    const DWORD copied = GetModuleFileNameW(
+        nullptr, path.data(), static_cast<DWORD>(path.size()));
+    if (copied == 0) return L"";
+    // 返回值刚好等于缓冲区大小说明可能被截断（没有 null 结尾），放大重试。
+    if (copied < path.size() - 1) {
+      path.resize(copied);
+      return path;
+    }
+    path.resize(path.size() * 2);
+  }
+}
+
+std::wstring AutoStartCommand() {
+  const std::wstring exe = CurrentExecutablePath();
+  if (exe.empty()) return L"";
+  // 路径含空格（Program Files）时必须加引号，否则 Run 项会把
+  // "C:\Program" 当可执行文件、后面全当参数，开机直接启动失败。
+  return L"\"" + exe + L"\"";
+}
+
+bool ReadAutoStart() {
+  const std::wstring exe = CurrentExecutablePath();
+  if (exe.empty()) return false;
+  HKEY key = nullptr;
+  if (RegOpenKeyExW(HKEY_CURRENT_USER, kAutoStartRunKey, 0, KEY_READ, &key) !=
+      ERROR_SUCCESS) {
+    return false;
+  }
+  wchar_t buffer[2048] = {};
+  DWORD bytes = sizeof(buffer);
+  DWORD type = 0;
+  const LONG status = RegQueryValueExW(
+      key, kAutoStartValueName, nullptr, &type,
+      reinterpret_cast<LPBYTE>(buffer), &bytes);
+  RegCloseKey(key);
+  if (status != ERROR_SUCCESS ||
+      (type != REG_SZ && type != REG_EXPAND_SZ)) {
+    return false;
+  }
+  std::wstring value(buffer, bytes / sizeof(wchar_t));
+  while (!value.empty() && value.back() == L'\0') value.pop_back();
+  // 只认指向当前这份安装的项：另一份 Wisp 留下的 Run 值不该让开关显示
+  // "已开启"——那样用户点关闭也删不掉它，开关就永远卡住了。
+  return value.find(exe) != std::wstring::npos;
+}
+
+bool WriteAutoStart(bool enabled) {
+  const std::wstring command = AutoStartCommand();
+  if (enabled && command.empty()) return false;
+  HKEY key = nullptr;
+  if (enabled) {
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, kAutoStartRunKey, 0, nullptr,
+                        REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &key,
+                        nullptr) != ERROR_SUCCESS) {
+      return false;
+    }
+    const LONG status = RegSetValueExW(
+        key, kAutoStartValueName, 0, REG_SZ,
+        reinterpret_cast<const BYTE*>(command.c_str()),
+        static_cast<DWORD>((command.size() + 1) * sizeof(wchar_t)));
+    RegCloseKey(key);
+    return status == ERROR_SUCCESS;
+  }
+  // 关闭是幂等的：值本来就不存在也算成功。
+  if (RegOpenKeyExW(HKEY_CURRENT_USER, kAutoStartRunKey, 0, KEY_WRITE,
+                    &key) != ERROR_SUCCESS) {
+    return true;
+  }
+  const LONG status = RegDeleteValueW(key, kAutoStartValueName);
+  RegCloseKey(key);
+  return status == ERROR_SUCCESS || status == ERROR_FILE_NOT_FOUND;
+}
+
 // Minimum window size in logical pixels. Below this the layout starts to
 // break, so the window refuses to shrink any further.
 //
@@ -1013,6 +1099,22 @@ bool FlutterWindow::OnCreate() {
             MaybeShowOnStartup();
           }
           result->Success();
+        } else if (name == "launchAtLoginStatus") {
+          // 状态一律以系统为准：用户完全可能在任务管理器里手动禁用了
+          // 这一项，本地记着"开"就是一个骗人的开关。
+          flutter::EncodableMap state{
+              {flutter::EncodableValue("supported"),
+               flutter::EncodableValue(true)},
+              {flutter::EncodableValue("enabled"),
+               flutter::EncodableValue(ReadAutoStart())},
+          };
+          result->Success(state);
+        } else if (name == "setLaunchAtLogin") {
+          const bool enabled = GetBool("enabled", false);
+          const bool ok = WriteAutoStart(enabled);
+          // 写完回读一次，不直接信"写成功"：被安全软件/组策略挡下来的
+          // 情况下，开关不该显示成已开启。关掉时同理（回读应为 false）。
+          result->Success(ok && ReadAutoStart() == enabled);
         } else if (name == "isWindowVisible") {
           result->Success(GetHandle() != nullptr && IsWindowVisible(GetHandle()));
         } else if (name == "windowState") {

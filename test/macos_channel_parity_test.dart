@@ -18,6 +18,9 @@ void main() {
   final File overlay = File('macos/Runner/WispOverlay.swift');
   final File dropView = File('macos/Runner/WispDropView.swift');
   final File pbxproj = File('macos/Runner.xcodeproj/project.pbxproj');
+  final File windowsRunner = File('windows/runner/flutter_window.cpp');
+  final File launchSwift = File('macos/Runner/WispLaunchAtLogin.swift');
+  final File launchDart = File('lib/services/launch_at_login.dart');
 
   /// 只有 Windows 实现、且 macOS 设置页已经隐藏了对应开关的能力。
   /// 加进来的每一项都必须说清楚为什么不用跨平台。
@@ -149,10 +152,48 @@ void main() {
     for (final String name in <String>[
       'WispOverlay.swift',
       'WispDropView.swift',
+      'WispLaunchAtLogin.swift',
     ]) {
       expect(source.contains('$name in Sources'), isTrue,
           reason: '$name 没进 Runner target 的 Compile Sources：文件写了、'
               '测试也绿了，但应用里根本没有这段代码');
     }
+  });
+
+  test('开机启动：三个桌面平台都要有真实实现，且都回查系统状态', () {
+    if (skip(windowsRunner) || skip(mainWindow) || skip(launchSwift) ||
+        skip(launchDart)) {
+      return;
+    }
+    final String cpp = windowsRunner.readAsStringSync();
+    final String swift = mainWindow.readAsStringSync();
+    final String swiftImpl = launchSwift.readAsStringSync();
+    final String dart = launchDart.readAsStringSync();
+
+    // 这个功能是三端各写一遍的，最容易出现的回归是"只改了 Dart、
+    // 忘了某一端原生层"——Dart 侧 catch 掉异常后界面毫无反应。
+    for (final String method in <String>[
+      'launchAtLoginStatus',
+      'setLaunchAtLogin',
+    ]) {
+      expect(cpp.contains('name == "$method"'), isTrue,
+          reason: 'Windows runner 少了 $method 分支');
+      expect(swift.contains('case "$method"'), isTrue,
+          reason: 'macOS runner 少了 $method 分支');
+    }
+
+    // Linux 是纯 Dart 的 XDG autostart，不接原生通道。
+    expect(dart.contains('autostart'), isTrue);
+    expect(dart.contains('APPIMAGE'), isTrue,
+        reason: 'AppImage 的 /proc/self/exe 指向临时挂载目录，'
+            '写进 autostart 下次开机必然失效');
+
+    // 三条实现都必须"写完回查"，不能把"没抛异常"当成已开启。
+    expect(cpp.contains('ReadAutoStart() == enabled'), isTrue,
+        reason: 'Windows 写完必须回读注册表');
+    expect(swiftImpl.contains('status()["enabled"]'), isTrue,
+        reason: 'macOS 关掉后必须回查 SMAppService / LaunchAgent');
+    expect(dart.contains('_linuxEnabled()'), isTrue,
+        reason: 'Linux 状态必须读 desktop 文件，不能记在本地');
   });
 }

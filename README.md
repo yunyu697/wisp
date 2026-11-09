@@ -260,6 +260,25 @@ Windows 那套「托盘 + 自绘分层窗口」在 macOS 上没有对应物，1.
 路径在 `draggingEntered` 时取一次缓存，`draggingUpdated` 只读缓存（拖几百个文件时每次重新
 反序列化 URL 会明显发涩），松手时再取一次以当时真实内容为准。
 
+### 开机启动（Windows / macOS / Linux）
+
+设置页「系统」里的「开机启动」只做一件事：**登录系统时自动运行 Wisp**。它和另外两项是独立的——「静默启动」管的是启动时露不露主窗口，「服务守护」管的是崩了以后自动拉起（Windows 服务，要 UAC）；开机启动走的是当前用户自己的登录项，不需要管理员授权。
+
+| 平台 | 实现 | 真实状态从哪查 |
+| --- | --- | --- |
+| Windows | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 的 `Wisp` 值 | 回读注册表，且只认指向当前 exe 的项 |
+| macOS 13+ | `SMAppService.mainApp`（出现在系统设置的「登录项与扩展」） | `SMAppService.status == .enabled` |
+| macOS 12 / SMAppService 被拒 | `~/Library/LaunchAgents` 里的 `RunAtLoad` plist | 文件是否存在 |
+| Linux | `~/.config/autostart/wisp.desktop`（纯 Dart，不碰 runner 的 C 代码） | 文件存在且未被 `Hidden=true` / `X-GNOME-Autostart-enabled=false` 禁用 |
+
+三条共同规矩：
+
+- **状态一律回查系统**，不存本地设置。用户完全可能在系统设置里手动关掉登录项，本地记着「开」就是个骗人的开关。进入设置页和每次切换后都会再查一次；写完不生效会回滚开关并提示，不会假装成功。
+- **只认自己这份安装**。另一份 Wisp 留下的注册表值 / desktop 文件不会让开关显示「已开启」——否则用户点关闭也删不掉它。
+- 三个容易踩的坑：Windows 的 exe 路径含空格必须加引号（否则 Run 项会把 `C:\Program` 当程序）；AppImage 的 `Platform.resolvedExecutable` 指向 `/tmp/.mount_XXXX` 临时挂载目录，写进 autostart 下次开机必然失效，必须优先用 `APPIMAGE` 环境变量；Wisp 的 macOS 产物是 ad-hoc 签名，`SMAppService.register()` 可能被系统拒绝，这时退回 LaunchAgent，而不是给一个永远打不开的开关。
+
+`test/launch_at_login_test.dart` 覆盖上述纯 Dart 分支（含回查失败、系统禁用、别的安装残留）；`test/macos_channel_parity_test.dart` 守着"三端都得有实现、都得回查"的源码契约。
+
 ### 发现机制（与官方 LocalSend 互通）
 
 1. **组播 announce**：向 `224.0.0.167:53317` 广播自己的信息（UDP JSON），启动时连发 5 次再转 3 秒心跳；

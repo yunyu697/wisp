@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -21,6 +23,23 @@ void main() {
   });
 
   group('更新日志数据', () {
+    test('currentVersion 必须和 pubspec.yaml 的版本一致', () {
+      // 1.0.31 / 1.0.32 发版时都忘了同步这里，直到 1.0.33 才被发现。
+      // 手动维护的常量一定要有自动断言，否则"关于"里永远停在旧版本。
+      final File pubspec = File('pubspec.yaml');
+      if (!pubspec.existsSync()) {
+        markTestSkipped('找不到 pubspec.yaml');
+        return;
+      }
+      final RegExpMatch? match = RegExp(
+        r'^version:\s*(\d+\.\d+\.\d+)\+\d+\s*$',
+        multiLine: true,
+      ).firstMatch(pubspec.readAsStringSync());
+      expect(match, isNotNull, reason: 'pubspec.yaml 里没找到 version: x.y.z+n');
+      expect(WispReleaseNotes.currentVersion, match!.group(1),
+          reason: '发新版时记得同步 release_notes.dart 的 currentVersion 与 entries');
+    });
+
     test('当前版本在列表里且只有它标记为当前', () {
       expect(
         WispReleaseNotes.entries.any((WispReleaseEntry e) => e.isCurrent),

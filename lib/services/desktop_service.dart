@@ -37,7 +37,7 @@ class DesktopWindowState {
 
 /// 桌面能力按平台分档。测试里要能模拟"跑在 macOS 上"，所以单独抽出来，
 /// 不直接读 `Platform`。
-enum DesktopPlatform { windows, macos, linux }
+enum DesktopPlatform { windows, macos, linux, mobile }
 
 /// 与桌面原生层通信的小通道。
 ///
@@ -62,33 +62,34 @@ class DesktopService {
   /// 功能坏了，反复开关、然后来信反馈"没效果"。
   static bool get supportsFloatingBall =>
       _desktopOverride ??
-      (_platform == DesktopPlatform.windows ||
-          _platform == DesktopPlatform.macos);
+      (platform == DesktopPlatform.windows ||
+          platform == DesktopPlatform.macos);
 
   /// 关窗收进托盘。macOS 关窗后是驻留菜单栏（不需要开关），
   /// Linux 没有托盘实现。
   static bool get supportsTrayMinimize =>
-      _desktopOverride ?? (_platform == DesktopPlatform.windows);
+      _desktopOverride ?? (platform == DesktopPlatform.windows);
 
   /// 静默启动：原生层要能"首帧画好先不显示，等 Dart 表态"。
   static bool get supportsSilentStart =>
-      _desktopOverride ?? (_platform == DesktopPlatform.windows);
+      _desktopOverride ?? (platform == DesktopPlatform.windows);
 
   /// 守护服务：Windows 服务（SCM），其它平台没有这个东西。
   static bool get supportsServiceGuard =>
-      _desktopOverride ?? (_platform == DesktopPlatform.windows);
+      _desktopOverride ?? (platform == DesktopPlatform.windows);
 
   static bool? _desktopOverride;
 
   static DesktopPlatform? _platformOverride;
 
-  /// 当前（或测试里模拟的）桌面平台。
-  static DesktopPlatform get _platform {
+  /// 当前（或测试里模拟的）平台。开机启动等能力也按它分派，所以对外可见。
+  static DesktopPlatform get platform {
     final DesktopPlatform? forced = _platformOverride;
     if (forced != null) return forced;
     if (Platform.isWindows) return DesktopPlatform.windows;
     if (Platform.isMacOS) return DesktopPlatform.macos;
-    return DesktopPlatform.linux;
+    if (Platform.isLinux) return DesktopPlatform.linux;
+    return DesktopPlatform.mobile;
   }
 
   /// 仅供测试注入平台能力（默认跟随当前平台）。
@@ -167,6 +168,39 @@ class DesktopService {
   static Future<bool> isSupported() async {
     try {
       return await _channel.invokeMethod<bool>('isSupported') ?? false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  /// 开机启动：向原生层查**系统里**的真实状态。
+  ///
+  /// 返回 null 表示这个平台没有原生实现；有的话带 `supported` / `enabled`。
+  /// 状态一律以系统为准：用户完全可能在系统设置里手动关掉登录项，
+  /// 拿本地设置当真就会显示一个骗人的开关。
+  static Future<Map<String, Object?>?> launchAtLoginStatus() async {
+    try {
+      final Map<Object?, Object?>? raw =
+          await _channel.invokeMethod<Map<Object?, Object?>>(
+              'launchAtLoginStatus');
+      if (raw == null) return null;
+      return raw.map((Object? k, Object? v) =>
+          MapEntry<String, Object?>('$k', v));
+    } on MissingPluginException {
+      return null;
+    } on PlatformException {
+      return null;
+    }
+  }
+
+  /// 打开/关闭开机启动。返回 false 表示原生层没写成功（不是"没变化"）。
+  static Future<bool> setLaunchAtLogin(bool enabled) async {
+    try {
+      final Object? ok = await _channel.invokeMethod<Object?>(
+          'setLaunchAtLogin', <String, bool>{'enabled': enabled});
+      return ok == true;
     } on MissingPluginException {
       return false;
     } on PlatformException {

@@ -24,8 +24,9 @@ void main() {
       deviceKind: DeviceKind.desktop,
     );
 
-  Widget host(Widget child) => ChangeNotifierProvider<AppState>.value(
-        value: state,
+  Widget host(Widget child, {AppState? value}) =>
+      ChangeNotifierProvider<AppState>.value(
+        value: value ?? state,
         child: MaterialApp(home: Scaffold(body: child)),
       );
 
@@ -96,5 +97,32 @@ void main() {
     for (final String title in <String>[...floatingBallRows, ...windowsOnlyRows]) {
       expect(find.text(title), findsNothing, reason: '「$title」在 Linux 上没有实现');
     }
+  });
+
+  testWidgets('开机启动：三个桌面平台都显示，移动端隐藏', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(900, 3200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    // 每次都新建一个 AppState：开机启动的能力是在构造时按平台判断的，
+    // 复用文件级那个实例会拿到第一次构造时的平台。
+    for (final DesktopPlatform target in <DesktopPlatform>[
+      DesktopPlatform.windows,
+      DesktopPlatform.macos,
+      DesktopPlatform.linux,
+    ]) {
+      DesktopService.debugSetDesktopPlatform(target);
+      await tester.pumpWidget(
+          host(const SettingsPage(), value: AppState()));
+      await tester.pump();
+      expect(find.text('开机启动'), findsOneWidget,
+          reason: '$target 已实现登录自启，开关必须显示');
+    }
+
+    DesktopService.debugSetDesktopPlatform(DesktopPlatform.mobile);
+    await tester.pumpWidget(host(const SettingsPage(), value: AppState()));
+    await tester.pump();
+    expect(find.text('开机启动'), findsNothing,
+        reason: '移动端没有"登录"这个概念，不该出现点了没反应的开关');
   });
 }

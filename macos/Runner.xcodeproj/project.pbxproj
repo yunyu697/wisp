@@ -29,6 +29,7 @@
 		33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CC11122044BFA00003C045 /* MainFlutterWindow.swift */; };
 		F1A0000100000000000000A1 /* WispOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A0000200000000000000A2 /* WispOverlay.swift */; };
 		F1A0000300000000000000A3 /* WispDropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A0000400000000000000A4 /* WispDropView.swift */; };
+		F1A0000500000000000000A5 /* WispLaunchAtLogin.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A0000600000000000000A6 /* WispLaunchAtLogin.swift */; };
 		78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */ = {isa = PBXBuildFile; productRef = 78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */; };
 /* End PBXBuildFile section */
 
@@ -75,6 +76,7 @@
 		33CC11122044BFA00003C045 /* MainFlutterWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainFlutterWindow.swift; sourceTree = "<group>"; };
 		F1A0000200000000000000A2 /* WispOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WispOverlay.swift; sourceTree = "<group>"; };
 		F1A0000400000000000000A4 /* WispDropView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WispDropView.swift; sourceTree = "<group>"; };
+		F1A0000600000000000000A6 /* WispLaunchAtLogin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WispLaunchAtLogin.swift; sourceTree = "<group>"; };
 		33CEB47222A05771004F2AC0 /* Flutter-Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Flutter-Debug.xcconfig"; sourceTree = "<group>"; };
 		33CEB47422A05771004F2AC0 /* Flutter-Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Flutter-Release.xcconfig"; sourceTree = "<group>"; };
 		33CEB47722A0578A004F2AC0 /* Flutter-Generated.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = "Flutter-Generated.xcconfig"; path = "ephemeral/Flutter-Generated.xcconfig"; sourceTree = "<group>"; };
@@ -174,6 +176,7 @@
 				33CC11122044BFA00003C045 /* MainFlutterWindow.swift */,
 				F1A0000200000000000000A2 /* WispOverlay.swift */,
 				F1A0000400000000000000A4 /* WispDropView.swift */,
+				F1A0000600000000000000A6 /* WispLaunchAtLogin.swift */,
 				33E51913231747F40026EE4D /* DebugProfile.entitlements */,
 				33E51914231749380026EE4D /* Release.entitlements */,
 				33CC11242044D66E0003C045 /* Resources */,
@@ -363,6 +366,7 @@
 				33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */,
 				F1A0000100000000000000A1 /* WispOverlay.swift in Sources */,
 				F1A0000300000000000000A3 /* WispDropView.swift in Sources */,
+				F1A0000500000000000000A5 /* WispLaunchAtLogin.swift in Sources */,
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 			);

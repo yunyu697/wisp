@@ -216,6 +216,10 @@ class SettingsPage extends StatelessWidget {
               _Group(
                 title: '系统',
                 children: <Widget>[
+                  // 开机启动三端都有实现，但能力是运行时回查出来的：
+                  // 原生层回报 supported=false（或移动端）就藏掉，不能留一个
+                  // 点了没反应、甚至显示"已开启"却根本不会启动的开关。
+                  if (state.launchAtLoginSupported) const _LaunchAtLoginRow(),
                   // 下面这几项依赖原生实现（托盘 / 首帧显隐 / Windows 服务 /
                   // 悬浮球），各平台实现的并不是同一批：macOS 有关窗驻留菜单栏
                   // 和桌面浮层（通知卡 / 悬浮球 / 气泡），但没有托盘最小化、
@@ -1253,6 +1257,61 @@ class _ReleaseEntryTile extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// 开机启动开关。
+///
+/// 单独做成 StatefulWidget 是为了**每次进设置页都回查一次系统状态**：
+/// 用户完全可能刚在系统设置里禁用了登录项，只靠应用启动时那次回查会
+/// 显示一个过期的开关。没初始化完（ready=false）时不查，避免启动期
+/// 多余的通道调用。
+class _LaunchAtLoginRow extends StatefulWidget {
+  const _LaunchAtLoginRow();
+
+  @override
+  State<_LaunchAtLoginRow> createState() => _LaunchAtLoginRowState();
+}
+
+class _LaunchAtLoginRowState extends State<_LaunchAtLoginRow> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final AppState state = context.read<AppState>();
+      if (state.ready) state.refreshLaunchAtLogin();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AppState state = context.watch<AppState>();
+    return _SettingRow(
+      icon: Icons.power_settings_new_rounded,
+      title: '开机启动',
+      subtitle: '登录系统后自动运行 Wisp，在后台等着接收文件',
+      trailing: state.launchAtLoginBusy
+          ? const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2.2),
+            )
+          : Switch(
+              value: state.launchAtLoginEnabled,
+              onChanged: (bool enabled) async {
+                final bool ok = await state.setLaunchAtLogin(enabled);
+                if (!ok && context.mounted) {
+                  ScaffoldMessenger.of(context)
+                    ..hideCurrentSnackBar()
+                    ..showSnackBar(const SnackBar(
+                      content: Text(
+                          '没有完成：系统没有接受这个设置，请到系统的「启动项 / 登录项」里手动添加 Wisp'),
+                    ));
+                }
+              },
+            ),
     );
   }
 }

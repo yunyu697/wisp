@@ -9,10 +9,23 @@ class WispReleaseNotes {
   const WispReleaseNotes._();
 
   /// 当前应用版本（与 pubspec.yaml 的 `version:` 保持一致）。
-  static const String currentVersion = '1.0.30';
+  static const String currentVersion = '1.0.33';
 
   /// 新版本在前，设置页按这个顺序展示。
   static const List<WispReleaseEntry> entries = <WispReleaseEntry>[
+    WispReleaseEntry(version: '1.0.33', changes: <String>[
+      '设置页新增「开机启动」：登录系统后自动运行 Wisp，在后台等着收文件；Windows、macOS、Linux 三个桌面平台都能用，不需要管理员授权',
+      '开关状态每次都回查系统：你在系统设置里手动关掉登录项，Wisp 里不会还显示「已开启」；设置没被系统接受时会明确提示，而不是留下一个假装成功的开关',
+      '补上 1.0.31、1.0.32 两条更新日志，并加了一条测试：以后发新版忘了同步「关于 → 更新日志」里的版本号会直接失败',
+    ]),
+    WispReleaseEntry(version: '1.0.32', changes: <String>[
+      'macOS 现在支持把文件直接拖进主窗口发送：从访达拖过来会浮出「松手即可发送」，松手后自动加入待发清单并切到发送页，文件夹会递归展开',
+      '拖拽层不影响主界面原有的点击与滚动：拖拽和鼠标在 macOS 上走两条不同的事件路径，只有指针事件会经过它',
+    ]),
+    WispReleaseEntry(version: '1.0.31', changes: <String>[
+      'macOS 补齐桌面浮层：关掉主窗口只剩菜单栏图标时，收到文件会从右下角弹通知卡，可以直接接收或忽略；打开「桌面悬浮球」后改为在球旁边弹气泡，进度和完成提示也在那里',
+      '「桌面悬浮球」和「悬浮球展开延时」这两个设置项在 macOS 上重新显示——之前是从未实现，不是坏了',
+    ]),
     WispReleaseEntry(version: '1.0.30', changes: <String>[
       '更新弹层新增「下载源」下拉：一键更新和仅下载都能自己挑官方直连或某个加速镜像，不用再等官方源超时才换；所选镜像失败会自动退回官方源重试',
       '修复「仅下载」把安装包丢进临时目录、下完既找不到也没法装：现在下到你的默认下载目录，并在下面直接给出「安装」按钮',

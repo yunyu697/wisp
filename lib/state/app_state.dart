@@ -17,6 +17,7 @@ import '../models/transfer.dart';
 import '../services/desktop_service.dart';
 import '../services/discovery_service.dart';
 import '../services/history_service.dart';
+import '../services/launch_at_login.dart';
 import '../services/message_service.dart';
 import '../services/notification_router.dart';
 import '../services/receiver_service.dart';
@@ -31,7 +32,13 @@ import '../services/update_service.dart';
 /// 界面只读这里的字段、只调这里的方法；
 /// 网络层通过回调把事件推回来，避免 UI 直接摸 socket。
 class AppState extends ChangeNotifier {
-  AppState();
+  AppState()
+      : _launchAtLogin = LaunchAtLoginState(
+          // 桌面三端都实现了登录自启，启动时先显示开关；真实状态在
+          // initialize() 里回查系统后再覆盖。移动端没有这个能力，直接不显示。
+          supported: DesktopService.platform != DesktopPlatform.mobile,
+          enabled: false,
+        );
 
   final SettingsService _settingsService = SettingsService();
   final HistoryService _historyService = HistoryService();
@@ -177,6 +184,8 @@ class AppState extends ChangeNotifier {
     _startSweep();
     // 服务守护的真实状态以服务管理器为准，启动时回查一次。
     _serviceStatus = await DesktopService.serviceStatus();
+    // 开机启动同理，以系统登录项为准（用户可能在系统设置里改过）。
+    _launchAtLogin = await LaunchAtLogin.status();
     ready = true;
     notifyListeners();
     // 版本检查放最后台跑，不挡启动。
@@ -464,6 +473,45 @@ class AppState extends ChangeNotifier {
       savedSnapped: settings.ballSnapped,
       savedEdge: settings.ballEdge,
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // 开机启动（状态一律以系统为准）
+  // ---------------------------------------------------------------------------
+
+  LaunchAtLoginState _launchAtLogin = LaunchAtLoginState.unsupported;
+  bool get launchAtLoginSupported => _launchAtLogin.supported;
+  bool get launchAtLoginEnabled => _launchAtLogin.enabled;
+  bool get launchAtLoginBusy => _launchBusy;
+  bool _launchBusy = false;
+
+  /// 进入设置页时再查一次：用户很可能刚在**系统的**登录项设置里改过，
+  /// 应用启动时那次回查已经过期了。
+  Future<void> refreshLaunchAtLogin() async {
+    final LaunchAtLoginState latest = await LaunchAtLogin.status();
+    if (latest.supported == _launchAtLogin.supported &&
+        latest.enabled == _launchAtLogin.enabled) {
+      return;
+    }
+    _launchAtLogin = latest;
+    notifyListeners();
+  }
+
+  /// 返回 false 表示没生效。设置页会回滚开关并提示，不会留下"看起来开了、
+  /// 下次开机却没启动"的状态。
+  Future<bool> setLaunchAtLogin(bool enabled) async {
+    if (_launchBusy) return false;
+    _launchBusy = true;
+    notifyListeners();
+    try {
+      final bool ok = await LaunchAtLogin.set(enabled);
+      // 不信任"写成功"：写完回查系统，状态没变就当没生效。
+      _launchAtLogin = await LaunchAtLogin.status();
+      return ok && _launchAtLogin.enabled == enabled;
+    } finally {
+      _launchBusy = false;
+      notifyListeners();
+    }
   }
 
   // ---------------------------------------------------------------------------

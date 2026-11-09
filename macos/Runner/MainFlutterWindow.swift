@@ -268,6 +268,12 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
       case "isSupported":
         // 桌面驻留能力存在（菜单栏图标 + 桌面浮层）。
         result(true)
+      case "launchAtLoginStatus":
+        // 状态从系统里查（SMAppService / LaunchAgent），不是本地记忆：
+        // 用户可以在系统设置里单独关掉登录项。
+        result(WispLaunchAtLogin.status())
+      case "setLaunchAtLogin":
+        result(WispLaunchAtLogin.set(args["enabled"] as? Bool ?? false))
       case "setTrayFlashing":
         self.setFlashing(args["enabled"] as? Bool ?? false)
         result(nil)

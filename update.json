@@ -1,11 +1,11 @@
 {
-  "version": "1.0.32",
-  "notes": "macOS 现在支持把文件直接拖进主窗口发送：从访达拖过来，窗口上会浮出「松手即可发送」的提示框，松手后自动加入待发清单并切到发送页，文件夹会递归展开。这一层不影响界面原有的点击与滚动。",
-  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v1.0.32/wisp-windows-x64-1.0.32-setup.exe",
+  "version": "1.0.33",
+  "notes": "设置页新增「开机启动」：登录系统后自动运行 Wisp，在后台等着收文件，Windows、macOS、Linux 三端都支持，不需要管理员授权。开关状态每次回查系统，设置没被系统接受时会明确提示；同时补上了 1.0.31、1.0.32 的更新日志。",
+  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v1.0.33/wisp-windows-x64-1.0.33-setup.exe",
   "downloads": {
-    "windows": "https://github.com/yunyu697/wisp/releases/download/v1.0.32/wisp-windows-x64-1.0.32-setup.exe",
-    "macos": "https://github.com/yunyu697/wisp/releases/download/v1.0.32/wisp-macos-1.0.32.dmg",
-    "linux": "https://github.com/yunyu697/wisp/releases/download/v1.0.32/wisp-linux-x64-1.0.32.AppImage",
-    "android": "https://github.com/yunyu697/wisp/releases/download/v1.0.32/wisp-android-1.0.32.apk"
+    "windows": "https://github.com/yunyu697/wisp/releases/download/v1.0.33/wisp-windows-x64-1.0.33-setup.exe",
+    "macos": "https://github.com/yunyu697/wisp/releases/download/v1.0.33/wisp-macos-1.0.33.dmg",
+    "linux": "https://github.com/yunyu697/wisp/releases/download/v1.0.33/wisp-linux-x64-1.0.33.AppImage",
+    "android": "https://github.com/yunyu697/wisp/releases/download/v1.0.33/wisp-android-1.0.33.apk"
   }
 }
