@@ -5,9 +5,16 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/constants.dart';
 import '../models/device.dart';
 import '../models/network.dart';
 import 'update_service.dart';
+
+/// 入站请求的接收策略（免确认的"免打扰"档位）。
+///
+/// 白名单只认对端自报的 fingerprint，所以这是"免打扰"而不是身份认证；
+/// PIN / 用户名范围 / 证书指纹校验仍照常生效。
+enum ReceivePolicy { ask, trusted, all }
 
 /// 可持久化的用户偏好。不可变对象，改动一律 copyWith 后整体落盘。
 @immutable
@@ -20,6 +27,8 @@ class WispSettings {
     this.pinEnabled = false,
     this.pin = '',
     this.autoAccept = false,
+    this.receivePolicy = ReceivePolicy.ask,
+    this.trustedFingerprints = const <String>[],
     this.saveDirectory,
     this.themeMode = ThemeMode.system,
     this.deviceKind = DeviceKind.desktop,
@@ -47,7 +56,17 @@ class WispSettings {
   final bool encryption;
   final bool pinEnabled;
   final String pin;
+
+  /// 设置页"自动接收"开关的遗留字段：仍保留（UI 开关还在），
+  /// 真正决定免确认行为的是 [receivePolicy]，两者由 setAutoAccept 同步。
   final bool autoAccept;
+
+  /// 入站接收策略，见 [ReceivePolicy]。
+  final ReceivePolicy receivePolicy;
+
+  /// 免确认白名单，只存 fingerprint（对端自报值）。
+  final List<String> trustedFingerprints;
+
   final String? saveDirectory;
   final ThemeMode themeMode;
   final DeviceKind deviceKind;
@@ -72,23 +91,27 @@ class WispSettings {
   /// 点关闭按钮时是否最小化到系统托盘。
   final bool minimizeToTray;
 
-  /// 静默启动：启动时不显示主窗口，只在托盘（以及悬浮球，如果开了）里待着。
+  /// 静默启动：启动时不显示主窗口，只在托盘里待着。
   ///
   /// 典型场景是开机自启——用户开机只是想让它在后台等着收文件，
   /// 不需要每次都被一个窗口挡住。
   final bool silentStart;
 
+  // 已退役：仅兼容读取旧配置，UI 与原生层不再使用（常驻悬浮球整体下线）。
   /// 是否启用桌面悬浮球。启用后桌面上常驻一个软件图标圆球，
   /// 有传输请求时在它旁边弹出气泡。
   final bool floatingBall;
 
+  // 已退役：仅兼容读取旧配置，UI 与原生层不再使用。
   /// 悬浮球收成把手后，鼠标悬停多久自动展开（毫秒，0 = 立即）。
   final int ballShowDelayMs;
 
+  // 已退役：仅兼容读取旧配置，UI 与原生层不再使用。
   /// 悬浮球上次停留的位置（物理像素）。null 表示还没拖过，用默认右下角。
   final int? ballPosX;
   final int? ballPosY;
 
+  // 已退役：仅兼容读取旧配置，UI 与原生层不再使用。
   /// 上次停留时是否吸附在屏幕边缘，及在哪条边（0 左 1 右 2 上 3 下）。
   final bool ballSnapped;
   final int ballEdge;
@@ -106,6 +129,27 @@ class WispSettings {
   /// 是否设了识别用户名。
   bool get hasUsername => username.trim().isNotEmpty;
 
+  /// 是否对这次入站请求免确认。白名单只认 fingerprint（对端自报值），
+  /// 所以这是「免打扰」而不是身份认证；PIN / 用户名范围 / 证书校验仍照常生效。
+  /// 无 fingerprint 的老设备永不自动接收；超限回落确认，防灌盘。
+  bool shouldAutoAccept({
+    required String fingerprint,
+    required int fileCount,
+    required int totalBytes,
+  }) {
+    if (fingerprint.trim().isEmpty) return false;
+    if (fileCount > WispProtocol.maxAutoAcceptFiles) return false;
+    if (totalBytes > WispProtocol.maxAutoAcceptBytes) return false;
+    switch (receivePolicy) {
+      case ReceivePolicy.all:
+        return true;
+      case ReceivePolicy.trusted:
+        return trustedFingerprints.contains(fingerprint);
+      case ReceivePolicy.ask:
+        return false;
+    }
+  }
+
   WispSettings copyWith({
     String? alias,
     bool? visible,
@@ -113,6 +157,8 @@ class WispSettings {
     bool? pinEnabled,
     String? pin,
     bool? autoAccept,
+    ReceivePolicy? receivePolicy,
+    List<String>? trustedFingerprints,
     String? saveDirectory,
     ThemeMode? themeMode,
     DeviceKind? deviceKind,
@@ -142,6 +188,8 @@ class WispSettings {
         pinEnabled: pinEnabled ?? this.pinEnabled,
         pin: pin ?? this.pin,
         autoAccept: autoAccept ?? this.autoAccept,
+        receivePolicy: receivePolicy ?? this.receivePolicy,
+        trustedFingerprints: trustedFingerprints ?? this.trustedFingerprints,
         saveDirectory: saveDirectory ?? this.saveDirectory,
         themeMode: themeMode ?? this.themeMode,
         deviceKind: deviceKind ?? this.deviceKind,
@@ -172,6 +220,8 @@ class WispSettings {
         'pinEnabled': pinEnabled,
         'pin': pin,
         'autoAccept': autoAccept,
+        'receivePolicy': receivePolicy.name,
+        'trustedFingerprints': trustedFingerprints,
         'saveDirectory': saveDirectory,
         'themeMode': themeMode.name,
         'deviceKind': deviceKind.name,
@@ -201,6 +251,20 @@ class WispSettings {
         pinEnabled: (json['pinEnabled'] as bool?) ?? false,
         pin: (json['pin'] as String?) ?? '',
         autoAccept: (json['autoAccept'] as bool?) ?? false,
+        // 兼容老数据：没有 receivePolicy 键时按旧的 autoAccept 开关兜底；
+        // 有该键但值无法识别就回落到最保守的 ask。
+        receivePolicy: json.containsKey('receivePolicy')
+            ? ReceivePolicy.values.firstWhere(
+                (ReceivePolicy p) => p.name == json['receivePolicy'],
+                orElse: () => ReceivePolicy.ask,
+              )
+            : ((json['autoAccept'] as bool?) ?? false
+                ? ReceivePolicy.all
+                : ReceivePolicy.ask),
+        trustedFingerprints:
+            (json['trustedFingerprints'] as List<dynamic>? ?? <dynamic>[])
+                .map((dynamic e) => e.toString())
+                .toList(),
         saveDirectory: json['saveDirectory'] as String?,
         themeMode: ThemeMode.values.firstWhere(
           (ThemeMode m) => m.name == json['themeMode'],

@@ -2,7 +2,11 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
-/// 主窗口 + 悬浮球的当前状态，用于决定通知走哪条通道。
+/// 主窗口的当前状态，用于决定通知走哪条通道。
+///
+/// 常驻悬浮球已退役：ballEnabled / ballExpanded / ballSnapped 三个字段
+/// 仅保留签名兼容（app_state.dart 等仍在并行改造中引用），恒为 false，
+/// 不参与任何通知判定。
 class DesktopWindowState {
   const DesktopWindowState({
     required this.visible,
@@ -27,6 +31,7 @@ class DesktopWindowState {
 
   final bool visible;
   final bool active;
+  // 已退役，仅保留字段兼容：常驻悬浮球整体下线后恒为 false。
   final bool ballEnabled;
   final bool ballExpanded;
   final bool ballSnapped;
@@ -41,11 +46,13 @@ enum DesktopPlatform { windows, macos, linux, mobile }
 
 /// 与桌面原生层通信的小通道。
 ///
-/// 管三类事：
+/// 管两类事：
 /// 1. 托盘（点关闭最小化到托盘、图标闪烁）；
-/// 2. 系统通知（右下角 toast）；
-/// 3. 悬浮球与气泡（开关悬浮球、气泡的询问/进度/完成三种状态）。
-/// 非桌面平台没有实现，调用会被静默忽略。
+/// 2. 桌面通知卡（右下角 toast 的询问/进度/完成三种状态）。
+///
+/// 常驻悬浮球与贴球询问气泡已整体退役：下面仍保留一批球/气泡方法的签名
+/// 只为兼容（app_state.dart 等仍在并行改造中引用），但一律不再调用原生通道，
+/// 直接空操作返回。非桌面平台没有实现，调用会被静默忽略。
 class DesktopService {
   const DesktopService._();
 
@@ -53,17 +60,17 @@ class DesktopService {
 
   /// 这些设置项背后都要原生实现，而各平台实现的并不是同一批。
   ///
-  /// * Windows：自绘分层窗口（悬浮球/气泡/通知卡）+ 托盘 + 服务守护，全都有；
-  /// * macOS：菜单栏驻留 + `WispOverlay.swift` 里的 NSPanel 浮层（通知卡 /
-  ///   悬浮球 / 气泡），但没有托盘最小化、静默启动和 SCM 服务；
+  /// * Windows：自绘分层通知卡 + 托盘 + 服务守护，全都有；
+  /// * macOS：菜单栏驻留 + `WispOverlay.swift` 里的 NSPanel 通知卡，
+  ///   但没有托盘最小化、静默启动和 SCM 服务；
   /// * Linux：通道都没接。
   ///
   /// 设置页据此隐藏开关：**一个点了没反应的开关比没有更糟**——用户会以为
   /// 功能坏了，反复开关、然后来信反馈"没效果"。
-  static bool get supportsFloatingBall =>
-      _desktopOverride ??
-      (platform == DesktopPlatform.windows ||
-          platform == DesktopPlatform.macos);
+  ///
+  /// 常驻悬浮球已退役：恒返回 false（保留 getter 只为兼容仍在并行改造中的
+  /// 设置页引用）。_desktopOverride 仅由测试注入，退役后不再影响本结果。
+  static bool get supportsFloatingBall => false;
 
   /// 关窗收进托盘。macOS 关窗后是驻留菜单栏（不需要开关），
   /// Linux 没有托盘实现。
@@ -133,7 +140,7 @@ class DesktopService {
     }
   }
 
-  /// 把主窗口显示出来并前置（托盘/悬浮球点击时用）。
+  /// 把主窗口显示出来并前置（托盘点击时用）。
   static Future<void> showWindow() async {
     try {
       await _channel.invokeMethod<void>('showWindow');
@@ -164,7 +171,7 @@ class DesktopService {
     }
   }
 
-  /// 当前平台是否支持托盘/悬浮球等桌面能力。
+  /// 当前平台是否支持托盘等桌面能力。
   static Future<bool> isSupported() async {
     try {
       return await _channel.invokeMethod<bool>('isSupported') ?? false;
@@ -232,6 +239,9 @@ class DesktopService {
   ///
   /// 只判断"可见"是不够的：窗口可见但被别的程序盖住时，用户根本看不到应用内
   /// 弹层，这时必须弹桌面通知。所以还要知道它是不是当前激活窗口。
+  ///
+  /// 常驻悬浮球已退役：下面三个 ball* 字段恒填 false（仅保留字段兼容），
+  /// 不再从原生返回值里读，也不参与 decideIncomingSurface 的判定。
   static Future<DesktopWindowState> windowState() async {
     try {
       final Map<Object?, Object?>? raw =
@@ -240,9 +250,9 @@ class DesktopService {
       return DesktopWindowState(
         visible: raw['visible'] == true,
         active: raw['active'] == true,
-        ballEnabled: raw['ballEnabled'] == true,
-        ballExpanded: raw['ballExpanded'] == true,
-        ballSnapped: raw['ballSnapped'] == true,
+        ballEnabled: false,
+        ballExpanded: false,
+        ballSnapped: false,
       );
     } on MissingPluginException {
       return DesktopWindowState.unknown;
@@ -251,7 +261,7 @@ class DesktopService {
     }
   }
 
-  /// 三类桌面窗口的可见性与矩形。自测入口用它断言"通知真的弹出来了"。
+  /// 桌面通知卡窗口的可见性与矩形。自测入口用它断言"通知真的弹出来了"。
   static Future<Map<String, Object?>> debugWindows() async {
     try {
       final Map<Object?, Object?>? raw =
@@ -299,7 +309,7 @@ class DesktopService {
     }
   }
 
-  /// 自测用：抓某个窗口（main/toast/bubble）的屏幕像素，返回 {ok, mean, dark}。
+  /// 自测用：抓某个窗口（main/toast）的屏幕像素，返回 {ok, mean, dark}。
   /// mean=平均亮度，dark=接近纯黑的像素占比。原生层会同时存一张 PNG。
   static Future<Map<String, Object?>> debugCapture(String target) async {
     try {
@@ -315,16 +325,11 @@ class DesktopService {
     }
   }
 
-  /// 自测用：悬浮球当前不透明度系数。0.25=静置变淡，1=全不透明。
-  /// 用来客观验证"创建后静置必须自己变淡"（不依赖鼠标事件）。
+  /// 自测用：悬浮球当前不透明度系数。
+  ///
+  /// 常驻悬浮球已退役：保留签名只为兼容，恒返回 1.0，不再调用原生通道。
   static Future<double> debugBallDim() async {
-    try {
-      return await _channel.invokeMethod<double>('debugBallDim') ?? 1.0;
-    } on MissingPluginException {
-      return 1.0;
-    } on PlatformException {
-      return 1.0;
-    }
+    return 1.0;
   }
 
   /// 托盘图标闪烁（有新传输请求时）。
@@ -338,11 +343,11 @@ class DesktopService {
     }
   }
 
-  /// 桌面浮层的真实状态（通知卡 / 气泡）。
+  /// 桌面通知卡的真实状态。
   ///
-  /// 返回 {toast: {...}, bubble: {...}}，每项含 visible/active/drawn 与屏幕矩形。
+  /// 返回 {toast: {...}}，含 visible/active/drawn 与屏幕矩形。
   /// `drawn` 表示原生层确实把像素画上去了——只看 visible 会被"窗口在、
-  /// 内容空"骗过去。
+  /// 内容空"骗过去。贴球询问气泡与常驻悬浮球已整体退役，不再查询 bubble 键。
   static Future<Map<String, Object?>> surfaceStatus() async {
     try {
       final Map<Object?, Object?>? raw =
@@ -456,8 +461,10 @@ class DesktopService {
     }
   }
 
-  /// 显示/隐藏桌面悬浮球。hoverDelayMs：把手悬停多久自动展开。
-  /// savedPos：上次记忆的球位置（物理像素），启用时恢复到原地。
+  /// 显示/隐藏桌面悬浮球 —— **常驻悬浮球已退役**。
+  ///
+  /// 保留签名只为兼容 app_state.dart 等并行改造中的引用；函数体直接空操作，
+  /// 不再调用原生通道（原生层的球窗口与通道分支已一并删除）。
   static Future<void> setFloatingBall(
     bool enabled, {
     int hoverDelayMs = 300,
@@ -466,47 +473,20 @@ class DesktopService {
     bool savedSnapped = false,
     int savedEdge = -1,
   }) async {
-    try {
-      await _channel.invokeMethod<void>('setFloatingBall', <String, dynamic>{
-        'enabled': enabled,
-        'hoverDelayMs': hoverDelayMs,
-        if (savedPosX != null && savedPosY != null) ...<String, dynamic>{
-          'x': savedPosX,
-          'y': savedPosY,
-          'snapped': savedSnapped,
-          'edge': savedEdge,
-        },
-      });
-    } on MissingPluginException {
-      // 忽略。
-    } on PlatformException {
-      // 忽略。
-    }
+    // 已退役：所有参数仅作签名兼容，不再使用。
   }
 
-  /// 有新传输请求时唤醒悬浮球（显示 + 提示动画）。
+  /// 有新传输请求时唤醒悬浮球 —— **常驻悬浮球已退役**，保留签名、空操作。
   static Future<void> showBallAlert() async {
-    try {
-      await _channel.invokeMethod<void>('showBallAlert');
-    } on MissingPluginException {
-      // 忽略。
-    } on PlatformException {
-      // 忽略。
-    }
+    // 已退役：不再调用原生通道。
   }
 
-  /// 通知流程结束：吸附状态的悬浮球缩回把手。
+  /// 通知流程结束收球 —— **常驻悬浮球已退役**，保留签名、空操作。
   static Future<void> collapseBall() async {
-    try {
-      await _channel.invokeMethod<void>('collapseBall');
-    } on MissingPluginException {
-      // 忽略。
-    } on PlatformException {
-      // 忽略。
-    }
+    // 已退役：不再调用原生通道。
   }
 
-  /// 气泡/卡片消息的四种模式，与 C++ 层的 kCardMode* 一一对应。
+  /// 桌面通知卡消息的四种模式，与 C++ 层的 kCardMode* 一一对应。
   static const int bubbleAsk = 0;
   static const int bubbleProgress = 1;
   static const int bubbleDone = 2;
@@ -520,65 +500,39 @@ class DesktopService {
   /// C++ 侧按数值判断，两个常量必须是同一个值。
   static const int bubbleInfo = 3;
 
-  /// 在悬浮球旁边弹出气泡。mode：0 询问接收 / 1 传输进度 / 2 传输完成。
+  /// 在悬浮球旁边弹出气泡 —— **贴球气泡已退役**，保留签名、空操作。
   static Future<void> showBubble(
     String title,
     String body, {
     int mode = bubbleAsk,
     String progress = '',
   }) async {
-    try {
-      await _channel.invokeMethod<void>('showBubble', <String, dynamic>{
-        'title': title,
-        'body': body,
-        'mode': mode,
-        'progress': progress,
-      });
-    } on MissingPluginException {
-      // 忽略。
-    } on PlatformException {
-      // 忽略。
-    }
+    // 已退役：不再调用原生通道。
   }
 
-  /// 更新已显示气泡的内容（传输进度用，避免闪烁重建窗口）。
+  /// 更新已显示气泡 —— **贴球气泡已退役**，保留签名、空操作。
   static Future<void> updateBubble(
     String body, {
     int mode = bubbleProgress,
     String progress = '',
   }) async {
-    try {
-      await _channel.invokeMethod<void>('updateBubble', <String, dynamic>{
-        'body': body,
-        'mode': mode,
-        'progress': progress,
-      });
-    } on MissingPluginException {
-      // 忽略。
-    } on PlatformException {
-      // 忽略。
-    }
+    // 已退役：不再调用原生通道。
   }
 
-  /// 收起气泡。
+  /// 收起气泡 —— **贴球气泡已退役**，保留签名、空操作。
   static Future<void> hideBubble() async {
-    try {
-      await _channel.invokeMethod<void>('hideBubble');
-    } on MissingPluginException {
-      // 忽略。
-    } on PlatformException {
-      // 忽略。
-    }
+    // 已退役：不再调用原生通道。
   }
 
   /// 注册原生事件回调。事件名：
-  /// * onBallClicked — 用户点了悬浮球；
-  /// * onBallPosition — 拖动结束后原生层上报球的最终位置；
-  /// * onBubbleAction — 用户在气泡上点了按钮，args 里有 action
-  ///   （accept / dismiss / openFolder）；
+  /// * onBubbleAction — 用户在通知卡上点了按钮（沿用旧事件名），args 里有
+  ///   action（accept / dismiss / openFolder）；
   /// * onFilesDropped — 文件被拖进主窗口，args['paths'] 是本地路径列表；
-  /// * onToastClicked — 用户点了系统通知；
-  /// * onBubbleTimeout — 气泡超时自动消失。
+  /// * onToastClicked — 用户点了通知卡正文；
+  /// * onWindowVisibility / onWindowRestored — 主窗口可见性与恢复。
+  ///
+  /// 常驻悬浮球与贴球气泡已退役：onBallClicked / onBallPosition /
+  /// onBubbleTimeout 三个事件原生层不再发送。
   static void setEventHandler(void Function(String event, Map<Object?, Object?> args)? handler) {
     _eventHandler = handler;
     _channel.setMethodCallHandler(handler == null

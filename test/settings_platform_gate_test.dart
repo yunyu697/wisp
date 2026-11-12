@@ -13,9 +13,8 @@ import 'package:wisp/ui/pages/settings_page.dart';
 /// 这些开关之前在各平台都显示：macOS 点下去原生层回
 /// FlutterMethodNotImplemented，界面照旧切换，用户看到的是"开关点了没反应"。
 ///
-/// 现在 macOS 用 `macos/Runner/WispOverlay.swift` 补齐了桌面浮层，
-/// 所以悬浮球这两个开关在 macOS 上必须回来；托盘最小化（macOS 关窗驻留
-/// 菜单栏）、静默启动、服务守护（SCM）仍然只有 Windows 有。
+/// 托盘最小化（macOS 关窗驻留菜单栏）、静默启动、服务守护（SCM）仍然只有
+/// Windows 有；桌面悬浮球的两个设置开关已退役，所有平台都不再出现。
 void main() {
   final AppState state = AppState()
     ..settings = const WispSettings(
@@ -39,10 +38,16 @@ void main() {
     await tester.pump();
   }
 
-  const List<String> floatingBallRows = <String>[
-    '桌面悬浮球',
-    '悬浮球展开延时',
-  ];
+  /// 悬浮球的两个设置开关已退役：任何平台都不该再出现。
+  void expectFloatingBallRetired() {
+    for (final String title in const <String>[
+      '桌面悬浮球',
+      '悬浮球展开延时',
+    ]) {
+      expect(find.text(title), findsNothing,
+          reason: '「$title」已随悬浮球一起退役，任何平台都不该再出现');
+    }
+  }
 
   const List<String> windowsOnlyRows = <String>[
     '关闭时最小化到托盘',
@@ -59,31 +64,33 @@ void main() {
     DesktopService.debugSetDesktopCapabilities(false);
     await pumpSettings(tester);
 
-    for (final String title in <String>[...floatingBallRows, ...windowsOnlyRows]) {
+    for (final String title in windowsOnlyRows) {
       expect(find.text(title), findsNothing, reason: '「$title」在这个平台没有实现，不该显示');
     }
+    expectFloatingBallRetired();
     // 纯 Dart 侧的设置必须还在——别把整组一起藏了。
     expect(find.text('自动接收'), findsOneWidget);
     expect(find.text('保存位置'), findsOneWidget);
+    // 新增的接收策略三态与白名单区块也是纯 Dart UI，必须还在。
+    expect(find.text('接收策略'), findsOneWidget);
+    expect(find.text('每次询问'), findsOneWidget);
   });
 
   testWidgets('Windows：原生桌面能力的开关照常显示', (WidgetTester tester) async {
     DesktopService.debugSetDesktopCapabilities(true);
     await pumpSettings(tester);
 
-    for (final String title in <String>[...floatingBallRows, ...windowsOnlyRows]) {
+    for (final String title in windowsOnlyRows) {
       expect(find.text(title), findsOneWidget, reason: '「$title」在 Windows 上是实现了的');
     }
+    expectFloatingBallRetired();
   });
 
-  testWidgets('macOS：有悬浮球，没有托盘/静默启动/服务守护', (WidgetTester tester) async {
+  testWidgets('macOS：没有托盘/静默启动/服务守护，也没有悬浮球', (WidgetTester tester) async {
     DesktopService.debugSetDesktopPlatform(DesktopPlatform.macos);
     await pumpSettings(tester);
 
-    for (final String title in floatingBallRows) {
-      expect(find.text(title), findsOneWidget,
-          reason: '「$title」在 macOS 上有 WispOverlay 原生实现，必须显示');
-    }
+    expectFloatingBallRetired();
     for (final String title in windowsOnlyRows) {
       expect(find.text(title), findsNothing,
           reason: '「$title」在 macOS 上没有原生实现，不该显示');
@@ -94,9 +101,10 @@ void main() {
     DesktopService.debugSetDesktopPlatform(DesktopPlatform.linux);
     await pumpSettings(tester);
 
-    for (final String title in <String>[...floatingBallRows, ...windowsOnlyRows]) {
+    for (final String title in windowsOnlyRows) {
       expect(find.text(title), findsNothing, reason: '「$title」在 Linux 上没有实现');
     }
+    expectFloatingBallRetired();
   });
 
   testWidgets('开机启动：三个桌面平台都显示，移动端隐藏', (WidgetTester tester) async {

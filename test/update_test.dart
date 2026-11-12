@@ -30,6 +30,10 @@ void main() {
       expect(WispUpdateService.isNewer('1.0.12', '1.0.12'), isFalse);
       expect(WispUpdateService.isNewer('1.0.11', '1.0.12'), isFalse);
       expect(WispUpdateService.isNewer('1.0.13', '1.0.12'), isTrue);
+      // 2.0.0 是首次跨主版本：线上 1.0.33 的客户端必须认得出这是新版，
+      // 否则所有人都会收不到这次更新提示，只能手动下载。
+      expect(WispUpdateService.isNewer('2.0.0', '1.0.33'), isTrue);
+      expect(WispUpdateService.isNewer('1.0.33', '2.0.0'), isFalse);
     });
   });
 

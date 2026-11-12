@@ -208,13 +208,21 @@ class SenderService {
     }
   }
 
-  /// 发送一条文本消息（Wisp 扩展端点，不落文件）。
+  /// 发送一条文字/剪贴板消息（走官方 LocalSend 的 prepare-upload + preview）。
   ///
-  /// 失败语义和文件传输不同，调用方要能区分：
-  /// * 404 / 405 —— 对端不是 Wisp，或版本太旧，没有这个端点；
-  /// * 403 —— 用户名范围不一致，或对方明确拒绝；
-  /// * 413 —— 文本太长。
-  Future<void> sendMessage(
+  /// 官方语义：正文内联在**恰好一个** `text/plain` 文件的 `preview` 字段里，
+  /// 接收端一个文件都不接、回 204，因此不建会话、不落盘。
+  ///
+  /// * 204 —— 成功（新版本对端，官方语义）；
+  /// * 200 —— 旧客户端把消息当普通 .txt 文件接收了。这里**不留 fallback**：
+  ///   能解析出 sessionId 就 extra POST 一次 /cancel 清掉僵尸会话（失败静默），
+  ///   再抛"请升级到新版本"；
+  /// * 403 —— 对方拒收（用户名范围不一致）；
+  /// * 413 —— 内容太长。
+  ///
+  /// [timeMs] 官方消息报文里没有时间字段，接收端以收到时间为准；参数保留是
+  /// 为了和调用方（消息模型自带时间戳）保持签名一致，此处刻意不使用。
+  Future<void> sendTextMessage(
     WispDevice device, {
     required String id,
     required String text,
@@ -222,25 +230,50 @@ class SenderService {
   }) async {
     final HttpClient client = _client(peer: device);
     try {
-      final Uri uri = Uri.parse('${device.baseUrl}${WispProtocol.messagePath}');
+      final Uri uri = Uri.parse('${device.baseUrl}${WispProtocol.prepareUploadPath}');
       final HttpClientRequest request = await client.postUrl(uri);
       request.headers.contentType = ContentType.json;
       request.write(jsonEncode(<String, dynamic>{
         'info': _selfInfo,
-        'message': <String, dynamic>{
-          'id': id,
-          'text': text,
-          'time': timeMs ?? DateTime.now().millisecondsSinceEpoch,
+        'files': <String, dynamic>{
+          id: <String, dynamic>{
+            'id': id,
+            'fileName': '$id.txt',
+            'size': utf8.encode(text).length,
+            'fileType': WispProtocol.textFileType,
+            'preview': text,
+          },
         },
       }));
 
       final HttpClientResponse response = await request.close();
-      await response.drain<void>();
+      final String body = await response.transform(utf8.decoder).join();
       final int status = response.statusCode;
-      if (status == 200 || status == 204) return;
-      if (status == 404 || status == 405) {
-        throw SendFailure('对方不是 Wisp（或版本太旧），只能收发文件', statusCode: status);
+
+      // 204：对端认得这是文字消息，一个文件都不接、不建会话、不落盘。
+      if (status == 204) return;
+
+      // 200：旧客户端把消息当普通 .txt 文件收了，会留下一个僵尸会话。
+      // 不留 fallback：先尽力 cancel 清理，再明确报错让用户升级。
+      if (status == 200) {
+        final Map<String, dynamic>? payload = _decode(body);
+        final String? sessionId = payload?['sessionId'] as String?;
+        if (sessionId != null) {
+          try {
+            final Uri cancelUri =
+                Uri.parse('${device.baseUrl}${WispProtocol.cancelPath}')
+                    .replace(queryParameters: <String, String>{
+              'sessionId': sessionId,
+            });
+            final HttpClientRequest cancelRequest = await client.postUrl(cancelUri);
+            await cancelRequest.close();
+          } catch (_) {
+            // 清理僵尸会话失败无需打扰用户，静默。
+          }
+        }
+        throw SendFailure('对方不支持文字消息（请升级到新版本）', statusCode: 200);
       }
+
       // 403 / 413 用消息语境的说法：复用 _messageFor 会得到"对方拒绝了这次
       // 传输""文件校验失败"，放在一条聊天消息上完全对不上。
       if (status == 403) {

@@ -7,6 +7,7 @@ import '../../core/utils/format.dart';
 import '../../models/device.dart';
 import '../../models/message.dart';
 import '../../state/app_state.dart';
+import '../widgets/attachment_bundle.dart';
 import '../widgets/device_tile.dart';
 
 /// 聊天页：气泡 + 输入框 + 一键发送剪贴板。
@@ -14,9 +15,21 @@ import '../widgets/device_tile.dart';
 /// 这是整个"发剪贴板"需求的落点：内容以消息的形式直接送到对端，
 /// **不写临时文件、不走文件传输、不进传输记录**。
 class ChatPage extends StatefulWidget {
-  const ChatPage({super.key, required this.peerKey});
+  const ChatPage({
+    super.key,
+    required this.peerKey,
+    this.embedded = false,
+    this.onClose,
+  });
 
   final String peerKey;
+
+  /// true = 嵌在三栏主场的消息流里：不包 Scaffold、不显示返回键。
+  /// 窄屏仍走 MaterialPageRoute，保持「退出会话 = pop」的语义。
+  final bool embedded;
+
+  /// 三栏里点「关闭会话」：清空选中态，下次进来默认折叠。
+  final VoidCallback? onClose;
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -27,6 +40,11 @@ class _ChatPageState extends State<ChatPage> {
   final ScrollController _scroll = ScrollController();
   AppState? _state;
   bool _sending = false;
+
+  /// 每条消息独立的「多文件卡已展开」状态，只由点击增删。
+  /// 切换会话（didUpdateWidget）或退出重进（父层用 ValueKey 重建）时清空，
+  /// 新消息、滚动、rebuild 都不会动它。
+  final Set<String> _expandedBundles = <String>{};
 
   @override
   void didChangeDependencies() {
@@ -39,6 +57,19 @@ class _ChatPageState extends State<ChatPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _state?.enterChat(widget.peerKey);
     });
+  }
+
+  @override
+  void didUpdateWidget(ChatPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.peerKey != widget.peerKey) {
+      // 切换会话必须清空展开态，否则 A 会话展开的卡会串到 B 会话里。
+      _expandedBundles.clear();
+      _input.clear();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _state?.enterChat(widget.peerKey);
+      });
+    }
   }
 
   @override
@@ -79,7 +110,7 @@ class _ChatPageState extends State<ChatPage> {
     final String text = _input.text;
     if (text.trim().isEmpty) return;
     final WispDevice? device = _device(state);
-    if (device == null || !device.messageCapable) {
+    if (device == null) {
       _toast('对方不在线，消息发不出去');
       return;
     }
@@ -100,7 +131,7 @@ class _ChatPageState extends State<ChatPage> {
     final AppState? state = _state;
     if (state == null || _sending) return;
     final WispDevice? device = _device(state);
-    if (device == null || !device.messageCapable) {
+    if (device == null) {
       _toast('对方不在线，消息发不出去');
       return;
     }
@@ -220,17 +251,17 @@ class _ChatPageState extends State<ChatPage> {
     final Conversation? conversation = state.conversationOf(widget.peerKey);
     final WispDevice? device = _device(state);
 
-    return Scaffold(
-      body: Column(
-        children: <Widget>[
-          _header(context, state, conversation, device),
-          Expanded(
-            child: _messageList(context, state, conversation, device),
-          ),
-          _composer(context, state, device),
-        ],
-      ),
+    final Widget body = Column(
+      children: <Widget>[
+        _header(context, state, conversation, device),
+        Expanded(
+          child: _messageList(context, state, conversation, device),
+        ),
+        _composer(context, state, device),
+      ],
     );
+    if (widget.embedded) return body;
+    return Scaffold(body: body);
   }
 
   Widget _header(
@@ -242,8 +273,6 @@ class _ChatPageState extends State<ChatPage> {
     final String status;
     if (device == null) {
       status = '不在线，等它重新出现在附近';
-    } else if (!device.messageCapable) {
-      status = '${device.modelLabel} · 不支持发消息';
     } else {
       status = '${device.modelLabel} · ${device.ip}';
     }
@@ -259,11 +288,14 @@ class _ChatPageState extends State<ChatPage> {
           padding: const EdgeInsets.fromLTRB(4, 6, 8, 8),
           child: Row(
             children: <Widget>[
-              IconButton(
-                onPressed: () => Navigator.of(context).maybePop(),
-                icon: const Icon(Icons.arrow_back_rounded, size: 22),
-                color: WispColors.secondaryText(context),
-              ),
+              if (!widget.embedded)
+                IconButton(
+                  onPressed: () => Navigator.of(context).maybePop(),
+                  icon: const Icon(Icons.arrow_back_rounded, size: 22),
+                  color: WispColors.secondaryText(context),
+                )
+              else
+                const SizedBox(width: 4),
               DeviceAvatar(kind: device?.kind ?? DeviceKind.unknown, size: 34),
               const SizedBox(width: 10),
               Expanded(
@@ -286,12 +318,20 @@ class _ChatPageState extends State<ChatPage> {
                   ],
                 ),
               ),
-              IconButton(
-                tooltip: '删除对话',
-                onPressed: () => _confirmDelete(state),
-                icon: const Icon(Icons.delete_outline_rounded, size: 20),
-                color: WispColors.secondaryText(context),
-              ),
+              if (widget.embedded)
+                IconButton(
+                  tooltip: '关闭会话',
+                  onPressed: widget.onClose,
+                  icon: const Icon(Icons.close_rounded, size: 20),
+                  color: WispColors.secondaryText(context),
+                )
+              else
+                IconButton(
+                  tooltip: '删除对话',
+                  onPressed: () => _confirmDelete(state),
+                  icon: const Icon(Icons.delete_outline_rounded, size: 20),
+                  color: WispColors.secondaryText(context),
+                ),
             ],
           ),
         ),
@@ -395,6 +435,8 @@ class _ChatPageState extends State<ChatPage> {
     // 1400px 的长条，眼睛根本跟不上换行。
     final double room = MediaQuery.sizeOf(context).width * 0.72;
     final double maxWidth = room > 560 ? 560 : room;
+    final bool hasText = message.text.trim().isNotEmpty;
+    final bool expanded = _expandedBundles.contains(message.id);
     final Color textColor = outgoing
         ? Colors.white
         : (Theme.of(context).brightness == Brightness.dark
@@ -407,27 +449,44 @@ class _ChatPageState extends State<ChatPage> {
         crossAxisAlignment:
             outgoing ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: <Widget>[
-          GestureDetector(
-            onLongPress: () => _copy(message.text),
-            child: Container(
-              constraints: BoxConstraints(maxWidth: maxWidth),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                gradient: outgoing ? WispColors.brandGradient : null,
-                color: outgoing ? null : WispColors.surfaceAlt(context),
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(18),
-                  topRight: const Radius.circular(18),
-                  bottomLeft: Radius.circular(outgoing ? 18 : 6),
-                  bottomRight: Radius.circular(outgoing ? 6 : 18),
+          if (hasText)
+            GestureDetector(
+              onLongPress: () => _copy(message.text),
+              child: Container(
+                constraints: BoxConstraints(maxWidth: maxWidth),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  gradient: outgoing ? WispColors.brandGradient : null,
+                  color: outgoing ? null : WispColors.surfaceAlt(context),
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(18),
+                    topRight: const Radius.circular(18),
+                    bottomLeft: Radius.circular(outgoing ? 18 : 6),
+                    bottomRight: Radius.circular(outgoing ? 6 : 18),
+                  ),
+                ),
+                child: Text(
+                  message.text,
+                  style: TextStyle(fontSize: 14.5, height: 1.45, color: textColor),
                 ),
               ),
-              child: Text(
-                message.text,
-                style: TextStyle(fontSize: 14.5, height: 1.45, color: textColor),
-              ),
             ),
-          ),
+          if (message.hasAttachments) ...<Widget>[
+            if (hasText) const SizedBox(height: 6),
+            AttachmentBundle(
+              attachments: message.attachments,
+              expanded: expanded,
+              outgoing: outgoing,
+              onToggle: () => setState(() {
+                // 只由点击改变：新消息 / 滚动 / rebuild 都不动这个 Set。
+                if (expanded) {
+                  _expandedBundles.remove(message.id);
+                } else {
+                  _expandedBundles.add(message.id);
+                }
+              }),
+            ),
+          ],
           const SizedBox(height: 4),
           Row(
             mainAxisSize: MainAxisSize.min,
@@ -463,7 +522,8 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Widget _composer(BuildContext context, AppState state, WispDevice? device) {
-    final bool online = device != null && device.messageCapable;
+    // 文字/剪贴板入口对所有 LocalSend 设备可用：不再有 messageCapable 门控。
+    final bool online = device != null;
     final bool canSend = online && !_sending;
 
     return Container(
@@ -488,9 +548,7 @@ class _ChatPageState extends State<ChatPage> {
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          device == null
-                              ? '对方不在附近，消息发不出去'
-                              : '对方不是 Wisp（或版本太旧），只能收发文件',
+                          '对方不在附近，消息发不出去',
                           style: TextStyle(
                             fontSize: 12,
                             color: WispColors.secondaryText(context),

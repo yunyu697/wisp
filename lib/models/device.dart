@@ -42,7 +42,6 @@ class WispDevice {
     this.https = true,
     this.download = false,
     this.username = '',
-    this.messageCapable = false,
     this.lastSeen,
   });
 
@@ -58,12 +57,6 @@ class WispDevice {
 
   /// 对方的识别用户名（扩展字段，官方客户端不会带）。
   final String username;
-
-  /// 对端是否支持文本消息（Wisp 扩展，见 [WispProtocol.messagePath]）。
-  ///
-  /// 官方 LocalSend 的报文里没有这个字段，解析出来就是 false ——
-  /// 界面据此把「发消息」入口关掉，而不是让用户点了之后撞一个 404。
-  final bool messageCapable;
 
   DateTime? lastSeen;
 
@@ -104,7 +97,6 @@ class WispDevice {
         https: https,
         download: download,
         username: username,
-        messageCapable: messageCapable,
         lastSeen: lastSeen ?? this.lastSeen,
       );
 
@@ -118,9 +110,6 @@ class WispDevice {
         'protocol': https ? 'https' : 'http',
         'download': download,
         if (username.isNotEmpty) 'username': username,
-        // 只在对端支持时写出去：给官方客户端回 register 应答时多一个
-        // 它不认识的字段是无害的，但少一个字段更省事，也更好对照抓包。
-        if (messageCapable) 'message': true,
       };
 
   factory WispDevice.fromJson(Map<String, dynamic> json, {required String ip}) => WispDevice(
@@ -136,7 +125,6 @@ class WispDevice {
         https: (json['protocol'] as String?) != 'http',
         download: (json['download'] as bool?) ?? false,
         username: (json['username'] as String?) ?? '',
-        messageCapable: (json['message'] as bool?) ?? false,
         lastSeen: DateTime.now(),
       );
 

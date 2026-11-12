@@ -43,6 +43,7 @@ class TransferFile {
     this.path,
     this.mime = 'application/octet-stream',
     this.sha256,
+    this.preview,
   });
 
   final String id;
@@ -51,6 +52,10 @@ class TransferFile {
   final String? path;
   final String mime;
   final String? sha256;
+
+  /// 官方 LocalSend 文字/剪贴板消息的正文：prepare-upload 里 `text/plain`
+  /// 文件内联的预览文本。普通文件为 null。
+  final String? preview;
 
   /// 已传字节，用于单文件进度条。
   int sent = 0;
@@ -65,6 +70,7 @@ class TransferFile {
         'size': size,
         'fileType': mime,
         if (sha256 != null) 'sha256': sha256,
+        if (preview != null) 'preview': preview,
       };
 
   factory TransferFile.fromProtocolJson(String id, Map<String, dynamic> json) => TransferFile(
@@ -73,6 +79,7 @@ class TransferFile {
         size: (json['size'] as num?)?.toInt() ?? 0,
         mime: (json['fileType'] as String?) ?? 'application/octet-stream',
         sha256: json['sha256'] as String?,
+        preview: json['preview'] as String?,
       );
 }
 
@@ -86,6 +93,7 @@ class TransferSession {
     required this.files,
     this.peerKind = DeviceKind.desktop,
     this.status = TransferStatus.pending,
+    this.peerFingerprint,
     DateTime? startedAt,
   }) : startedAt = startedAt ?? DateTime.now();
 
@@ -96,6 +104,10 @@ class TransferSession {
   final List<TransferFile> files;
   final DeviceKind peerKind;
   final DateTime startedAt;
+
+  /// 对端证书 fingerprint：聊天式界面用它把这次传输挂回正确的会话，
+  /// 换 Wi-Fi 后 IP 变了也不分裂。老设备可能为空，由状态层兜底。
+  final String? peerFingerprint;
 
   TransferStatus status;
   String? error;
@@ -111,6 +123,11 @@ class TransferSession {
 
   /// 令牌：接收端为每个文件签发，发送端按文件回传。
   final Map<String, String> tokens = <String, String>{};
+
+  /// 入站文件按 fileId 记录**真实落盘路径**（safeFileName 改名 / 重名加后缀
+  /// 之后的路径）。出站恒为空。写历史记录时用它把 paths 与 fileNames 对齐，
+  /// 这样"打开所在目录 / 再次发送"才指得到真正的文件。
+  final Map<String, String> savedPaths = <String, String>{};
 
   DateTime _sampleAt = DateTime.now();
   int _sampleBytes = 0;

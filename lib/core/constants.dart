@@ -20,12 +20,14 @@ class WispProtocol {
   static const String cancelPath = '/api/localsend/v2/cancel';
   static const String infoPath = '/api/localsend/v2/info';
 
-  /// 文本消息端点（Wisp 扩展，官方 LocalSend 没有这个概念）。
-  ///
-  /// 刻意放在 `wisp` 命名空间而不是 `localsend` 下：这条路径不属于协议
-  /// v2.2，塞进别人的命名空间里只会让"兼容 LocalSend"这句话变得含糊。
-  /// 对端是官方客户端时会直接 404，发送端据此给出"对方不支持发消息"。
-  static const String messagePath = '/api/wisp/v1/message';
+  /// 官方 LocalSend 的文字/剪贴板消息不是独立端点：prepare-upload 里放
+  /// **恰好一个** `text/plain` 文件，正文内联在 `preview` 字段。接收端一个
+  /// 文件都不接、回 204，因此不落盘。Wisp 私有 /api/wisp/v1/message 已退役。
+  static const String textFileType = 'text/plain';
+
+  /// 自动接收的护栏：超过这个规模就回落到「每次询问」，防止被灌盘。
+  static const int maxAutoAcceptFiles = 20;
+  static const int maxAutoAcceptBytes = 2 * 1024 * 1024 * 1024;
 
   /// 单条消息上限，防止异常报文撑爆内存。
   static const int maxDatagramBytes = 64 * 1024;

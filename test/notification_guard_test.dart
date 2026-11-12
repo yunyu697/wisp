@@ -51,9 +51,7 @@ void main() {
 
       const List<String> banned = <String>[
         'DesktopService.showToast(',
-        'DesktopService.showBubble(',
         'DesktopService.updateToast(',
-        'DesktopService.updateBubble(',
       ];
 
       final List<String> violations = <String>[];
@@ -78,7 +76,7 @@ void main() {
             '所有桌面通知必须走 AppState._desktopNotice（它会确认通知真的画出来了，'
             '没画出来会重发）。直接调 DesktopService 的通知方法会退回"发一次就当成功"的'
             '老行为，用户就会遇到"要第二次才会出现"。\n'
-            '如需特殊用途，请改用 _desktopNotice 的参数（isUpdate / onBall / mode）。\n'
+            '如需特殊用途，请改用 _desktopNotice 的参数（isUpdate / mode）。\n'
             '违规位置：\n${violations.join('\n')}',
       );
     });
@@ -98,9 +96,7 @@ void main() {
 
       const List<String> banned = <String>[
         'DesktopService.showToast(',
-        'DesktopService.showBubble(',
         'DesktopService.updateToast(',
-        'DesktopService.updateBubble(',
       ];
 
       final List<String> violations = <String>[];

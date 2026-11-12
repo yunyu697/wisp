@@ -129,9 +129,6 @@ class SelfTestRunner {
       await _step('main_not_black_activate', _mainWindowNotBlackOnActivate);
       await _step('main_not_black_tray', _mainWindowNotBlack);
       await _step('main_not_black_taskbar', _mainWindowNotBlackTaskbar);
-      await _step('bubble_visible', _bubbleVisible);
-      await _step('ball_hidden_bubble', _bubbleBesideHandle);
-      await _step('ball_dims_idle', _ballDimsWhenIdle);
     }
   }
 
@@ -379,7 +376,7 @@ class SelfTestRunner {
   }
 
   // ---------------------------------------------------------------------------
-  // 步骤三/四/五：桌面通知与悬浮球气泡
+  // 步骤三：桌面通知卡（toast）的真实状态复查
   // ---------------------------------------------------------------------------
 
   Future<Map<String, Object?>> _windows() => DesktopService.debugWindows();
@@ -402,14 +399,6 @@ class SelfTestRunner {
     final int wl = all['workLeft']! as int, wt = all['workTop']! as int;
     final int wr = all['workRight']! as int, wb = all['workBottom']! as int;
     return l >= wl - 2 && t >= wt - 2 && r <= wr + 2 && b <= wb + 2;
-  }
-
-  static bool _overlap(Map<String, Object?> a, Map<String, Object?> b) {
-    final int al = a['left']! as int, at = a['top']! as int;
-    final int ar = a['right']! as int, ab = a['bottom']! as int;
-    final int bl = b['left']! as int, bt = b['top']! as int;
-    final int br = b['right']! as int, bb = b['bottom']! as int;
-    return al < br && bl < ar && at < bb && bt < ab;
   }
 
   Future<String?> _toastVisible() async {
@@ -544,21 +533,17 @@ class SelfTestRunner {
     await Future<void>.delayed(const Duration(milliseconds: 1200));
     final Map<String, Object?> all = await _windows();
     final Map<String, Object?> toast = _rect(all['toast']);
-    final Map<String, Object?> bubble = _rect(all['bubble']);
     final Map<String, Object?> shot = await DesktopService.debugCapture('toast');
 
     await DesktopService.hideToast();
-    await DesktopService.hideBubble();
     await DesktopService.debugSetMainVisible(true);
     await Future<void>.delayed(const Duration(milliseconds: 600));
 
-    final bool toastOk = toast['visible'] == true;
-    final bool bubbleOk = bubble['visible'] == true;
-    if (!toastOk && !bubbleOk) {
-      throw StateError('真实流程下第一次没有任何桌面提醒：toast=$toast bubble=$bubble');
+    if (toast['visible'] != true) {
+      throw StateError('真实流程下第一次没有桌面通知卡：$toast');
     }
     final double mean = (shot['mean'] as num?)?.toDouble() ?? 0;
-    return '第一次就出来了：toast=$toast bubble=$bubble，通知卡区域亮度 $mean';
+    return '第一次就出来了：toast=$toast，通知卡区域亮度 $mean';
   }
 
   /// 伪造一个接收请求。
@@ -593,15 +578,13 @@ class SelfTestRunner {
     await Future<void>.delayed(const Duration(milliseconds: 1200));
     final Map<String, Object?> all = await _windows();
     final Map<String, Object?> toast = _rect(all['toast']);
-    final Map<String, Object?> bubble = _rect(all['bubble']);
 
     await DesktopService.hideToast();
-    await DesktopService.hideBubble();
-    if (toast['visible'] != true && bubble['visible'] != true) {
+    if (toast['visible'] != true) {
       throw StateError(
-          '主窗口开着但没被使用时，第一次请求没有桌面提醒：toast=$toast bubble=$bubble');
+          '主窗口开着但没被使用时，第一次请求没有桌面通知卡：toast=$toast');
     }
-    return '失焦态第一次就弹出来了：toast=$toast bubble=$bubble';
+    return '失焦态第一次就弹出来了：toast=$toast';
   }
 
   /// 主窗口开着但没被使用时收到通知，随后用户点回主窗口——主窗口不能黑屏。
@@ -695,65 +678,6 @@ class SelfTestRunner {
       throw StateError('卡片不在时结局提示被吞掉了：$toast');
     }
     return '卡片不在时结局提示重新弹出来了';
-  }
-
-  Future<String?> _bubbleVisible() async {
-    await DesktopService.setFloatingBall(true, hoverDelayMs: 300);
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-    await DesktopService.showBallAlert();
-    await Future<void>.delayed(const Duration(milliseconds: 400));
-    await DesktopService.showBubble('SelfTest', '想发送 1 个文件（96 KB），是否接收？',
-        mode: DesktopService.bubbleAsk);
-    await Future<void>.delayed(const Duration(milliseconds: 400));
-    final Map<String, Object?> all = await _windows();
-    final Map<String, Object?> bubble =
-        _rect(all['bubble']);
-    final Map<String, Object?> ball = _rect(all['ball']);
-    await DesktopService.hideBubble();
-    if (bubble['visible'] != true) throw StateError('气泡没有显示：$bubble');
-    if (!_inside(bubble, all)) throw StateError('气泡越界：$bubble');
-    if (ball['visible'] == true && _overlap(bubble, ball)) {
-      throw StateError('气泡压住了悬浮球：bubble=$bubble ball=$ball');
-    }
-    return '气泡 $bubble 与球 $ball 不重叠且在工作区内';
-  }
-
-  /// 球吸附成把手后，气泡应当贴着把手弹出（规则 6）。
-  Future<String?> _bubbleBesideHandle() async {
-    await DesktopService.collapseBall();
-    await Future<void>.delayed(const Duration(milliseconds: 600));
-    await DesktopService.showBubble('SelfTest', '把手状态下的气泡位置检查',
-        mode: DesktopService.bubbleAsk);
-    await Future<void>.delayed(const Duration(milliseconds: 400));
-    final Map<String, Object?> all = await _windows();
-    final Map<String, Object?> bubble =
-        _rect(all['bubble']);
-    await DesktopService.hideBubble();
-    await DesktopService.setFloatingBall(false);
-    if (bubble['visible'] != true) throw StateError('把手态气泡没有显示：$bubble');
-    if (!_inside(bubble, all)) throw StateError('把手态气泡越界：$bubble');
-    return '把手态气泡 $bubble 在工作区内';
-  }
-
-  /// 开机自启后没有任何鼠标事件，把手也必须自己变淡——否则用户看到的是
-  /// 「把手永远全不透明、悬停也不变」。变暗原本只挂在 WM_MOUSELEAVE 上，
-  /// 创建球时从不排空闲计时，自启场景就永远不触发。这里创建后静置，
-  /// 直接读原生层的不透明度系数，断言它确实降下来了（不靠肉眼）。
-  Future<String?> _ballDimsWhenIdle() async {
-    await DesktopService.setFloatingBall(true, hoverDelayMs: 300);
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-    final double fresh = await DesktopService.debugBallDim();
-    // 1s 空闲延时 + 1s 淡出，留一点余量。
-    await Future<void>.delayed(const Duration(milliseconds: 2600));
-    final double idle = await DesktopService.debugBallDim();
-    await DesktopService.setFloatingBall(false);
-    if (fresh < 0.9) {
-      throw StateError('刚创建就变淡了（应保持不透明）：fresh=$fresh');
-    }
-    if (idle > 0.4) {
-      throw StateError('静置 2.9s 后把手仍不透明：idle=$idle（变淡没触发）');
-    }
-    return '创建时 opaque=$fresh → 静置后 dim=$idle';
   }
 
   Map<String, Object?> toJson() => <String, Object?>{

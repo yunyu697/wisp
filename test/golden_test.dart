@@ -46,12 +46,13 @@ void main() {
       deviceKind: DeviceKind.desktop,
     );
 
-  Widget host(Widget child, {ThemeMode mode = ThemeMode.light}) {
+  Widget host(Widget child,
+      {ThemeMode mode = ThemeMode.light, AppState? stateOverride}) {
     final ThemeData base = mode == ThemeMode.dark
         ? WispTheme.dark(fontFamily: fontFamily)
         : WispTheme.light(fontFamily: fontFamily);
     return ChangeNotifierProvider<AppState>.value(
-      value: state,
+      value: stateOverride ?? state,
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         theme: base,
@@ -221,14 +222,12 @@ void main() {
       ip: '192.168.1.31',
       fingerprint: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       kind: DeviceKind.mobile,
-      messageCapable: true,
     ));
     state.acceptDeviceForTest(WispDevice(
       alias: '客厅的 Mac mini',
       ip: '192.168.1.42',
       fingerprint: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
       kind: DeviceKind.desktop,
-      messageCapable: true,
     ));
     state.seedConversationForTest(Conversation(
       peerKey: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
@@ -272,6 +271,96 @@ void main() {
     // 共用一个 state，用完清空，避免污染后面的用例。
     state.conversations.clear();
     state.devices.clear();
+  });
+
+  // 三栏聊天主场：这是本轮改造的主界面，必须有一张真实渲染的基准图。
+  // 之前的截图最宽只到 800×600（走单栏分支），三栏布局等于零覆盖。
+  // 时间全部写死，否则气泡上的时钟会让基准图每分钟变一次。
+  testWidgets('golden: 三栏聊天主场（1440x900）', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final AppState three = AppState()
+      ..settings = const WispSettings(
+        alias: 'Tyler 的 MacBook',
+        fingerprint: '42df24cbe1a07d3f9b6c8e5a2d4f1b73',
+        deviceKind: DeviceKind.desktop,
+      );
+    three.acceptDeviceForTest(WispDevice(
+      alias: 'Tyler 的 iPhone',
+      ip: '192.168.1.31',
+      fingerprint: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      kind: DeviceKind.mobile,
+    ));
+    three.acceptDeviceForTest(WispDevice(
+      alias: '客厅的 Mac mini',
+      ip: '192.168.1.42',
+      fingerprint: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      kind: DeviceKind.desktop,
+    ));
+    final DateTime t = DateTime(2026, 1, 1, 10, 30);
+    three.seedConversationForTest(Conversation(
+      peerKey: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      peerAlias: 'Tyler 的 iPhone',
+      peerIp: '192.168.1.31',
+      messages: <ChatMessage>[
+        ChatMessage(
+          id: 'm1',
+          direction: MessageDirection.outgoing,
+          text: '把昨天拍的照片发我一下',
+          time: t,
+        ),
+        ChatMessage(
+          id: 'm2',
+          direction: MessageDirection.incoming,
+          text: '好，三张一起发，注意查收',
+          time: t.add(const Duration(minutes: 1)),
+        ),
+        ChatMessage(
+          id: 'files-3',
+          direction: MessageDirection.incoming,
+          text: '',
+          time: t.add(const Duration(minutes: 2)),
+          attachments: <ChatAttachment>[
+            const ChatAttachment(
+                name: '海边.jpg', size: 2483000, path: '', mime: 'image/jpeg'),
+            const ChatAttachment(
+                name: '报价.pdf', size: 184000, path: '', mime: 'application/pdf'),
+            const ChatAttachment(
+                name: '录音.m4a', size: 942000, path: '', mime: 'audio/mp4'),
+          ],
+        ),
+      ],
+    ));
+    three.seedConversationForTest(Conversation(
+      peerKey: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      peerAlias: '客厅的 Mac mini',
+      peerIp: '192.168.1.42',
+      messages: <ChatMessage>[
+        ChatMessage(
+          id: 'm3',
+          direction: MessageDirection.incoming,
+          text: '构建跑完了，全绿',
+          time: t.subtract(const Duration(hours: 1)),
+        ),
+      ],
+    ));
+
+    await tester.pumpWidget(
+        host(const MessagesPage(), stateOverride: three));
+    await tester.pump(const Duration(milliseconds: 900));
+
+    // 选中第一个会话，中栏消息流 + 右栏身份卡才会出现。
+    await tester.tap(find.text('Tyler 的 iPhone').first);
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // 出现两次：左栏会话摘要 + 中栏折叠附件卡。
+    expect(find.text('共 3 个文件'), findsNWidgets(2),
+        reason: '三栏截图里应该能看到默认折叠的附件卡');
+    await expectLater(find.byType(MessagesPage),
+        matchesGoldenFile('goldens/17-three-column.png'));
   });
 
   // 最小窗口看门狗：窗口再怎么缩，首页所有元素（页头、身份卡、雷达、

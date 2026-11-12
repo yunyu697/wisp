@@ -87,6 +87,66 @@ void main() {
       expect(restored.updateCheckHours, WispUpdateCadence.defaultHours);
       expect(restored.lastUpdateCheckMs, 0);
     });
+
+    test('receivePolicy / trustedFingerprints 新字段能存能读', () {
+      const WispSettings original = WispSettings(
+        alias: '测试机',
+        fingerprint: 'abc123',
+        receivePolicy: ReceivePolicy.trusted,
+        trustedFingerprints: <String>['fp-a', 'fp-b'],
+      );
+
+      final Map<String, dynamic> json = original.toJson();
+      expect(json['receivePolicy'], 'trusted');
+      expect(json['trustedFingerprints'], <String>['fp-a', 'fp-b']);
+
+      final WispSettings restored = WispSettings.fromJson(json);
+      expect(restored.receivePolicy, ReceivePolicy.trusted);
+      expect(restored.trustedFingerprints, <String>['fp-a', 'fp-b']);
+
+      // copyWith 也能透传这两项。
+      final WispSettings changed = original.copyWith(
+        receivePolicy: ReceivePolicy.all,
+        trustedFingerprints: <String>['fp-c'],
+      );
+      expect(changed.receivePolicy, ReceivePolicy.all);
+      expect(changed.trustedFingerprints, <String>['fp-c']);
+    });
+
+    test('老版本 JSON 平滑升级：autoAccept 决定 receivePolicy 默认值', () {
+      // 老数据没有 receivePolicy 键：开的升级成 all、关的升级成 ask。
+      final WispSettings wasOn = WispSettings.fromJson(const <String, dynamic>{
+        'alias': '老设备',
+        'fingerprint': 'ff00',
+        'autoAccept': true,
+      });
+      expect(wasOn.autoAccept, isTrue);
+      expect(wasOn.receivePolicy, ReceivePolicy.all);
+      expect(wasOn.trustedFingerprints, isEmpty);
+
+      final WispSettings wasOff = WispSettings.fromJson(const <String, dynamic>{
+        'alias': '老设备',
+        'fingerprint': 'ff00',
+        'autoAccept': false,
+      });
+      expect(wasOff.receivePolicy, ReceivePolicy.ask);
+      expect(wasOff.trustedFingerprints, isEmpty);
+
+      // 无法识别的值回落到最保守的 ask；显式 trusted 以显式值为准。
+      expect(
+        WispSettings.fromJson(const <String, dynamic>{
+          'receivePolicy': '不存在的值',
+        }).receivePolicy,
+        ReceivePolicy.ask,
+      );
+      expect(
+        WispSettings.fromJson(const <String, dynamic>{
+          'autoAccept': true,
+          'receivePolicy': 'trusted',
+        }).receivePolicy,
+        ReceivePolicy.trusted,
+      );
+    });
   });
 
   group('静默启动', () {

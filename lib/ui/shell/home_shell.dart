@@ -170,21 +170,24 @@ class _HomeShellState extends State<HomeShell> {
       );
     }
 
-    // 横屏 / 宽窗口：侧边导航 + 限宽居中的内容。
-    // 内容限宽（kMaxContentWidth）避免在宽屏上被拉伸，多出的宽度留给留白；
-    // 页面内部再按需把列表摊成多栏，真正利用横向空间。
+    // 横屏 / 宽窗口：侧边导航 + 内容区。
+    // 一般页面限宽居中（kMaxContentWidth）避免被拉伸；但消息页在真正的宽
+    // 桌面窗口上要铺满，才放得下「会话栏 / 消息流 / 身份卡」三栏。
+    final bool fullBleed = _index == 1 && isThreeColumnLayout(context);
     return Scaffold(
       body: Row(
         children: <Widget>[
           WispNavRail(index: _index, onChanged: _select, unread: _unread),
           Expanded(
             child: SafeArea(
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
-                  child: pages,
-                ),
-              ),
+              child: fullBleed
+                  ? pages
+                  : Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
+                        child: pages,
+                      ),
+                    ),
             ),
           ),
         ],

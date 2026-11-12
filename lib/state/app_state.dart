@@ -10,11 +10,13 @@ import '../core/constants.dart';
 import '../core/username_scope.dart';
 import '../core/utils/format.dart';
 import '../core/utils/pickers.dart';
+import '../models/contact.dart';
 import '../models/device.dart';
 import '../models/message.dart';
 import '../models/network.dart';
 import '../models/transfer.dart';
 import '../services/desktop_service.dart';
+import '../services/contact_book.dart';
 import '../services/discovery_service.dart';
 import '../services/history_service.dart';
 import '../services/launch_at_login.dart';
@@ -43,6 +45,7 @@ class AppState extends ChangeNotifier {
   final SettingsService _settingsService = SettingsService();
   final HistoryService _historyService = HistoryService();
   final MessageService _messageService = MessageService();
+  final ContactBook _contactBook = ContactBook();
 
   WispSettings settings = WispSettings.defaults();
   bool ready = false;
@@ -63,12 +66,14 @@ class AppState extends ChangeNotifier {
   final List<TransferSession> sessions = <TransferSession>[];
   final List<TransferRecord> history = <TransferRecord>[];
 
-  /// 与各台设备的聊天会话，按最近一条消息倒序。
-  ///
-  /// 和 [history] 是两份完全独立的账：history 记"传过什么文件"，
-  /// conversations 记"和谁说过什么话"。消息不落文件，只在这里和
-  /// [MessageService] 的本地存储里。
+  /// 统一账本：文字、图片、文件都只是这里的一条 [ChatMessage]。
+  /// 文字走官方 preview 通道、文件走标准 files 通道，但本地不再分两套账。
+  /// [history] 仍然双写保留，供「记录」页与"再次发送"使用。
   final List<Conversation> conversations = <Conversation>[];
+
+  /// 按 fingerprint 持久化的联系人簿：离线、换局域网都不丢身份。
+  /// 无 fingerprint 的老设备不入簿，只开临时会话。
+  final List<Contact> contacts = <Contact>[];
 
   /// 当前打开的会话（[Conversation.peerKey]）。null 表示不在聊天页。
   String? activeChatKey;
@@ -111,19 +116,15 @@ class AppState extends ChangeNotifier {
   /// 防抖：同一时刻只允许一次检查在飞（启动与轮询可能撞车）。
   bool _updateCheckInFlight = false;
 
-  // 桌面通知状态机：
-  // _bubbleShown/_bubbleAccepted —— 悬浮球气泡流程是否活着、用户是否已确认。
-  // _toastShown —— 右下角通知卡片流程是否活着（询问/进度都在这张卡上）。
-  // _progressSurfaceShown —— 确认后进度面板（气泡或卡片）是否已创建。
-  // _desktopSuppressed —— 用户打开了主窗口：桌面提醒全部退场并停止推进。
-  // _useBallForFlow —— 本次流程走悬浮球气泡（true）还是通知卡片（false）。
-  bool _bubbleShown = false;
-  bool _bubbleAccepted = false;
+  // 桌面通知状态机：常驻悬浮球与贴球气泡已整体退役，现在只有通知卡一条通道。
+  // _toastShown / _toastAccepted —— 询问卡是否在展、用户是否已确认接收。
+  // _progressSurfaceShown —— 确认后的进度卡是否已创建。
+  // _desktopSuppressed —— 用户回到了主窗口：桌面提醒退场并停止推进。
   bool _toastShown = false;
+  bool _toastAccepted = false;
   bool _progressSurfaceShown = false;
   bool _desktopSuppressed = false;
-  bool _useBallForFlow = false;
-  DateTime _lastBubbleUpdate = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _lastProgressUpdate = DateTime.fromMillisecondsSinceEpoch(0);
 
   /// 可用的网卡列表，供设置页选择。
   List<NetworkInterfaceInfo> interfaces = <NetworkInterfaceInfo>[];
@@ -163,22 +164,21 @@ class AppState extends ChangeNotifier {
     conversations
       ..clear()
       ..addAll(await _messageService.load());
+    contacts
+      ..clear()
+      ..addAll(await _contactBook.load());
+    // 临时会话 30 天无活动只归档、不删记录；用户保留的联系人永不自动归档。
+    if (ContactBook.archiveIdle(contacts, DateTime.now()) > 0) {
+      unawaited(_contactBook.save(contacts));
+    }
     interfaces = await NetworkInterfaceInfo.list();
     localIp = await DiscoveryService.resolveLocalIp(settings.networkInterface);
     // 证书指纹：设置页要显示，两端对指纹时用。
     certFingerprint = await WispTls.fingerprint();
     // 托盘开关保存在本地设置里，启动时同步给原生层。
     await DesktopService.setMinimizeToTray(settings.minimizeToTray);
-    // 原生层事件（点悬浮球、点气泡按钮、点通知、气泡超时）统一从这里回来。
+    // 原生层事件（窗口可见性、通知卡按钮、拖拽、托盘）统一从这里回来。
     DesktopService.setEventHandler(_onDesktopEvent);
-    await DesktopService.setFloatingBall(
-      settings.floatingBall,
-      hoverDelayMs: settings.ballShowDelayMs,
-      savedPosX: settings.ballPosX,
-      savedPosY: settings.ballPosY,
-      savedSnapped: settings.ballSnapped,
-      savedEdge: settings.ballEdge,
-    );
     await _startNetwork();
     _watchedIp = localIp;
     _startSweep();
@@ -294,6 +294,11 @@ class AppState extends ChangeNotifier {
       devices.add(device);
     }
     devices.sort((WispDevice a, WispDevice b) => a.alias.compareTo(b.alias));
+    // 身份层：按 fingerprint 记住这台设备，下次换局域网出现仍挂回同一会话。
+    // 只在「新联系人」时落盘，避免 3~5 秒一次发现就写一次磁盘。
+    if (ContactBook.upsert(contacts, device)) {
+      unawaited(_contactBook.save(contacts));
+    }
     notifyListeners();
   }
 
@@ -462,17 +467,55 @@ class AppState extends ChangeNotifier {
   Future<void> setSilentStart(bool value) =>
       updateSettings(settings.copyWith(silentStart: value));
 
-  /// 开关桌面悬浮球。关掉时原生层会销毁悬浮球和气泡窗口。
-  Future<void> setFloatingBall(bool value) async {
-    await updateSettings(settings.copyWith(floatingBall: value));
-    await DesktopService.setFloatingBall(
-      value,
-      hoverDelayMs: settings.ballShowDelayMs,
-      savedPosX: settings.ballPosX,
-      savedPosY: settings.ballPosY,
-      savedSnapped: settings.ballSnapped,
-      savedEdge: settings.ballEdge,
-    );
+  /// 接收策略三态：真正生效的是 [WispSettings.receivePolicy]，
+  /// 遗留的 autoAccept 布尔只跟着同步，供旧数据兼容。
+  Future<void> setReceivePolicy(ReceivePolicy policy) => updateSettings(
+        settings.copyWith(
+          receivePolicy: policy,
+          autoAccept: policy == ReceivePolicy.all,
+        ),
+      );
+
+  /// 白名单只认 fingerprint：换 Wi-Fi、改别名都仍生效；不按 IP / 别名。
+  /// 注意这是对端自报值，语义是「免打扰」不是身份认证，PIN 照旧生效。
+  Future<void> toggleTrusted(String fingerprint) {
+    final String id = fingerprint.trim();
+    if (id.isEmpty) return Future<void>.value();
+    final List<String> next = List<String>.from(settings.trustedFingerprints);
+    final bool adding = !next.contains(id);
+    if (adding) {
+      next.add(id);
+    } else {
+      next.remove(id);
+    }
+    // 身份卡上打开「免确认接收」时，若策略还是「每次询问」白名单不会生效；
+    // 顺手切到「仅白名单设备」，让开关所见即所得。
+    final ReceivePolicy policy =
+        adding && settings.receivePolicy == ReceivePolicy.ask
+            ? ReceivePolicy.trusted
+            : settings.receivePolicy;
+    return updateSettings(settings.copyWith(
+      trustedFingerprints: next,
+      receivePolicy: policy,
+    ));
+  }
+
+  /// 临时会话 → 保留的联系人（也可反向取消保留）。
+  Future<void> keepContact(String id, {bool keep = true}) async {
+    final Contact? contact = ContactBook.byId(contacts, id);
+    if (contact == null) return;
+    contact.state = keep ? ContactState.kept : ContactState.temporary;
+    contact.lastActive = DateTime.now();
+    await _contactBook.save(contacts);
+    notifyListeners();
+  }
+
+  Future<void> pinContact(String id, bool pinned) async {
+    final Contact? contact = ContactBook.byId(contacts, id);
+    if (contact == null) return;
+    contact.pinned = pinned;
+    await _contactBook.save(contacts);
+    notifyListeners();
   }
 
   // ---------------------------------------------------------------------------
@@ -560,15 +603,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// 悬浮球把手悬停多久自动展开（毫秒）。
-  Future<void> setBallShowDelay(int ms) async {
-    await updateSettings(settings.copyWith(ballShowDelayMs: ms));
-    // 延时是窗口行为，同步给原生层。
-    if (settings.floatingBall) {
-      await DesktopService.setFloatingBall(true, hoverDelayMs: ms);
-    }
-  }
-
   Future<void> setVisible(bool visible) =>
       updateSettings(settings.copyWith(visible: visible), restartNetwork: true);
 
@@ -580,7 +614,12 @@ class AppState extends ChangeNotifier {
         restartNetwork: true,
       );
 
-  Future<void> setAutoAccept(bool value) => updateSettings(settings.copyWith(autoAccept: value));
+  /// 设置页的"自动接收"开关：同时把遗留的 autoAccept 与新的接收策略同步，
+  /// 开=全部自动、关=每次询问。真正生效的是 [WispSettings.receivePolicy]。
+  Future<void> setAutoAccept(bool value) => updateSettings(settings.copyWith(
+        autoAccept: value,
+        receivePolicy: value ? ReceivePolicy.all : ReceivePolicy.ask,
+      ));
 
   Future<void> setSaveDirectory(String? path) =>
       updateSettings(settings.copyWith(saveDirectory: path));
@@ -708,6 +747,7 @@ class AppState extends ChangeNotifier {
       files: List<TransferFile>.from(draft),
       peerKind: device.kind,
       status: TransferStatus.pending,
+      peerFingerprint: device.fingerprint,
     );
     sessions.insert(0, session);
     activeSession = session;
@@ -789,21 +829,47 @@ class AppState extends ChangeNotifier {
       bytes: session.doneBytes,
       time: DateTime.now(),
       success: success,
-      // 出站记源文件路径（"再次发送"要用），入站记落盘目录（"打开目录"要用）。
-      // 用空字符串占位而不是过滤掉，保证 paths 与 fileNames 的下标严格对齐，
-      // 否则重发时文件名会整体错位一格。
+      // 出站记源文件路径（"再次发送"要用）；入站按 fileId 从 savedPaths 取
+      // 真实落盘路径（safeFileName 改名 / 重名加后缀后的路径）。两者都与
+      // fileNames 下标严格对齐，缺失用空字符串占位而不是过滤掉，否则重发 /
+      // 打开目录时文件名会整体错位一格。
       paths: session.direction == TransferDirection.outgoing
           ? session.files.map((TransferFile f) => f.path ?? '').toList()
-          : const <String>[],
+          : session.files
+              .map((TransferFile f) => session.savedPaths[f.id] ?? '')
+              .toList(),
       saveDir: session.saveDir,
       peerIp: session.peerIp,
     );
     history.insert(0, record);
-    // 磁盘上本来只留 120 条，但内存里的 history 之前是只增不减——
-    // 挂机跑几百次传输之后，这份列表会一直涨。这里同步截断。
-    if (history.length > HistoryService.limit) {
-      history.removeRange(HistoryService.limit, history.length);
-    }
+    // 统一账本：一次文件传输也是一条聊天消息。文字走 preview、文件走 files，
+    // 但本地只有 conversations 这一份账；history 双写保留给「记录」页与重发。
+    final Conversation conversation = _ensureConversation(
+      _peerKeyFor(session),
+      session.peerAlias,
+      session.peerIp,
+    );
+    conversation.add(ChatMessage(
+      id: 'files-${session.id}',
+      direction: session.direction == TransferDirection.outgoing
+          ? MessageDirection.outgoing
+          : MessageDirection.incoming,
+      text: '',
+      time: record.time,
+      attachments: <ChatAttachment>[
+        for (int i = 0; i < session.files.length; i++)
+          ChatAttachment(
+            name: session.files[i].name,
+            size: session.files[i].size,
+            path: i < record.paths.length ? record.paths[i] : '',
+            mime: session.files[i].mime,
+          ),
+      ],
+    ));
+    _sortConversations();
+    unawaited(_messageService.save(conversations));
+    // 超出 HistoryService.limit 的只是"归档"，记录不删：内存与磁盘都全量保留，
+    // 主列表按建议数量展示即可。P1 再做归档分区与搜索，绝不在这里截断删除。
     // 结束的会话不必再留在内存里：sessions 只为进行中的传输服务。
     sessions.removeWhere(
         (TransferSession s) => s != session && s.status.isFinished);
@@ -814,6 +880,31 @@ class AppState extends ChangeNotifier {
   // ---------------------------------------------------------------------------
   // 消息（IM 式聊天，消息本身不落文件）
   // ---------------------------------------------------------------------------
+
+  /// 会话归属：优先用对端 certificate fingerprint（永不退化成 IP 的身份），
+  /// 老设备没有 fingerprint 时退回当前在线设备的 key，最后才是 IP。
+  String _peerKeyFor(TransferSession session) {
+    final String own = (session.peerFingerprint ?? '').trim();
+    if (own.isNotEmpty) return own;
+    for (final WispDevice device in devices) {
+      if (device.ip == session.peerIp) return device.key;
+    }
+    return session.peerIp;
+  }
+
+  /// 找会话对应的联系人。老会话按 IP 存时，用当前在线设备补出 fingerprint。
+  Contact? contactOf(String peerKey) {
+    final Contact? direct = ContactBook.byId(contacts, peerKey);
+    if (direct != null) return direct;
+    final Conversation? conversation = conversationOf(peerKey);
+    if (conversation == null) return null;
+    for (final WispDevice device in devices) {
+      if (device.ip == conversation.peerIp) {
+        return ContactBook.byId(contacts, device.fingerprint);
+      }
+    }
+    return null;
+  }
 
   Conversation? conversationOf(String peerKey) {
     for (final Conversation conversation in conversations) {
@@ -912,9 +1003,6 @@ class AppState extends ChangeNotifier {
   Future<String?> sendText(WispDevice device, String text) async {
     final String value = text.trim();
     if (value.isEmpty) return '没有可发送的内容';
-    if (!device.messageCapable) {
-      return '${device.alias} 不是 Wisp（或版本太旧），只能收发文件';
-    }
     if (value.length > WispProtocol.maxMessageChars) {
       return '内容太长，最多 ${WispProtocol.maxMessageChars ~/ 1024}K 字符';
     }
@@ -952,7 +1040,7 @@ class AppState extends ChangeNotifier {
 
     String? error;
     try {
-      await _sender().sendMessage(
+      await _sender().sendTextMessage(
         device,
         id: message.id,
         text: message.text,
@@ -1020,24 +1108,25 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 供测试验证「一次文件传输 = 一条聊天消息」的并账路径。
+  /// 走的是和真实传输结束完全一样的 [_finishSession]，不另写一份逻辑。
+  @visibleForTesting
+  void finishSessionForTest(TransferSession session) => _finishSession(session);
+
   /// 桌面提醒：窗口不在眼前时弹一条纯通知（没有按钮，到点自己收）。
   ///
   /// 刻意不点托盘闪烁：消息不是"等你决定"的事，闪到用户点开才停反而烦人。
   Future<void> _notifyDesktopMessage(IncomingMessage message) async {
-    // 正在传文件时一律不弹：那条流程的气泡/卡片上有「接收」「打开目录」这类
-    // 按钮，被一条消息顶掉就等于让用户点不到。消息本身已经进了会话并计了
-    // 未读，等用户回来再看不会丢。
+    // 正在传文件时一律不弹：通知卡上有「接收」「打开目录」这类按钮，
+    // 被一条纯消息顶掉就等于让用户点不到。消息已经进会话并计了未读。
     if (sessions.any((TransferSession s) => s.status.isRunning)) return;
 
     final DesktopWindowState state = await DesktopService.windowState();
     final NotificationSurface surface = decideIncomingSurface(state);
     if (surface == NotificationSurface.inApp) return;
-    final bool onBall = useBallFlow(surface);
-    // 还有文件流程挂在桌面上（已确认、正在收）时同样不抢它的气泡。
-    if (onBall && incoming != null) return;
-    if (onBall) await DesktopService.showBallAlert();
+    // 还有文件请求挂在通知卡上时，别用纯消息把它顶掉。
+    if (incoming != null) return;
     await _desktopNotice(
-      onBall: onBall,
       title: message.sender.alias,
       body: _messagePreview(message.text),
       mode: DesktopService.bubbleInfo,
@@ -1058,14 +1147,12 @@ class AppState extends ChangeNotifier {
   /// 收到接收请求的统一入口：网络回调和自测都走这里。
   ///
   /// 单独抽出来是为了让自测能驱动**真实**的通知分流逻辑
-  /// （decideIncomingSurface + 桌面流程状态机），而不是绕过它直接调原生通道——
-  /// 绕过的那条路测不出"第一次不出现、第二次才出现"这类问题。
+  /// （decideIncomingSurface + 桌面流程状态机），而不是绕过它直接调原生通道。
   void handleIncomingRequest(IncomingRequest request) {
     incoming = request;
     // 每次都是全新的一条流程：先把上一条流程的桌面状态清干净。
-    _bubbleShown = false;
-    _bubbleAccepted = false;
     _toastShown = false;
+    _toastAccepted = false;
     _progressSurfaceShown = false;
     _desktopSuppressed = false;
     unawaited(_notifyDesktopIncoming(request));
@@ -1081,12 +1168,8 @@ class AppState extends ChangeNotifier {
     incoming?.resolve(ReceiveDecision.accept(fileIds: fileIds));
     incoming = null;
     unawaited(DesktopService.setTrayFlashing(false));
-    // 用户走应用内弹层确认的：把还挂在桌面的"询问"气泡收掉。
-    // 用户从气泡上确认的（_bubbleAccepted）不动，气泡马上要切进度条。
-    if (_bubbleShown && !_bubbleAccepted) {
-      _bubbleShown = false;
-      unawaited(DesktopService.hideBubble());
-    }
+    // 已确认接收：通知卡从「询问」推进到进度态（卡片本身不收）。
+    if (_toastShown) _toastAccepted = true;
     notifyListeners();
   }
 
@@ -1094,81 +1177,45 @@ class AppState extends ChangeNotifier {
     incoming?.resolve(const ReceiveDecision.reject());
     incoming = null;
     unawaited(DesktopService.setTrayFlashing(false));
-    // 气泡 dismiss 路径 C++ 已自己收起，这里再调一次是无害的兜底。
-    if (_bubbleShown) {
-      _bubbleShown = false;
-      _bubbleAccepted = false;
-      unawaited(DesktopService.hideBubble());
-    }
     _toastShown = false;
-    // 拒绝即流程结束：吸附的球缩回把手。
-    unawaited(DesktopService.collapseBall());
+    _toastAccepted = false;
+    _progressSurfaceShown = false;
     notifyListeners();
   }
 
   // ---------------------------------------------------------------------------
-  // 桌面集成：托盘闪烁 / 通知卡片 / 悬浮球气泡
+  // 桌面集成：托盘闪烁 / 通知卡片
   // ---------------------------------------------------------------------------
 
   /// 收到接收请求时的桌面提醒分流（互斥，绝不重复打扰）：
   /// * 主窗口开着且是当前激活窗口 → 什么都不做，应用内弹层就是通知；
-  /// * 悬浮球启用 → 唤醒悬浮球 + 旁边气泡（不弹卡片）；
   /// * 其它（主窗口没开 / 开着但被切走）→ 托盘闪烁 + 右下角通知卡片。
   ///
-  /// 判定逻辑集中在 [decideIncomingSurface]，这里是唯一的调用点。
+  /// 常驻悬浮球与贴球气泡已整体退役，判定逻辑集中在 [decideIncomingSurface]，
+  /// 这里是唯一的调用点。
   Future<void> _notifyDesktopIncoming(IncomingRequest request) async {
     final DesktopWindowState state = await DesktopService.windowState();
     final NotificationSurface surface = decideIncomingSurface(state);
     if (surface == NotificationSurface.inApp) return;
 
-    final int total = request.files.fold(0, (int sum, TransferFile f) => sum + f.size);
+    final int total =
+        request.files.fold(0, (int sum, TransferFile f) => sum + f.size);
     final String body =
         '${request.sender.alias} 想发送 ${request.files.length} 个文件（${Format.bytes(total)}）';
     await DesktopService.setTrayFlashing(true);
-    _useBallForFlow = useBallFlow(surface);
-    if (_useBallForFlow) {
-      await DesktopService.showBallAlert();
-      _bubbleShown = true;
-      _bubbleAccepted = false;
-      await _desktopNotice(
-        onBall: true,
-        title: request.sender.alias,
-        body: '想发送 ${request.files.length} 个文件（${Format.bytes(total)}），是否接收？',
-        mode: DesktopService.bubbleAsk,
-      );
-    } else {
-      _toastShown = true;
-      await _desktopNotice(
-        onBall: false,
-        title: '收到传输请求',
-        body: body,
-        mode: DesktopService.bubbleAsk,
-      );
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // 桌面浮层的"发 → 查 → 没出来就重发"闭环
-  // ---------------------------------------------------------------------------
-
-  /// 点悬浮球时补弹询问气泡（请求还在、但球侧还没弹过）。
-  void _showIncomingBubble(IncomingRequest request) {
-    final int total =
-        request.files.fold(0, (int sum, TransferFile f) => sum + f.size);
-    _bubbleShown = true;
-    _bubbleAccepted = false;
-    unawaited(_desktopNotice(
-      onBall: true,
-      title: request.sender.alias,
-      body: '想发送 ${request.files.length} 个文件（${Format.bytes(total)}），是否接收？',
+    _toastShown = true;
+    await _desktopNotice(
+      title: '收到传输请求',
+      body: body,
       mode: DesktopService.bubbleAsk,
-    ));
+    );
   }
 
-  /// 让某条桌面通道显示一段内容。
-  ///
-  /// * [isUpdate]=true：在已经弹出的那张卡/气泡上改内容；
-  /// * [isUpdate]=false：全新弹一张。
+  // ---------------------------------------------------------------------------
+  // 通知卡的"发 → 查 → 没出来就重发"闭环
+  // ---------------------------------------------------------------------------
+
+  /// 让通知卡显示一段内容。
   ///
   /// 两条硬约束，都是用户投诉过的：
   /// 1. 弹完必须**确认它真的画出来了**（visible + drawn）。以前是"发一次就
@@ -1177,35 +1224,27 @@ class AppState extends ChangeNotifier {
   /// 2. 改内容时如果原来那张已经不在了（超时收掉了），必须改成全新弹一张；
   ///    否则 update 是空操作，发送方取消/传输完成这类结局提示会被吞掉。
   Future<void> _desktopNotice({
-    required bool onBall,
     required String title,
     required String body,
     required int mode,
     bool isUpdate = false,
     String progress = '',
   }) async {
-    final String which = onBall ? 'bubble' : 'toast';
+    // 常驻悬浮球退役后只有一条通道，which 固定为 toast。
+    const String which = 'toast';
     if (isUpdate && await _surfaceReady(which)) {
-      if (onBall) {
-        await DesktopService.updateBubble(body, mode: mode, progress: progress);
-      } else {
-        await DesktopService.updateToast(body, mode: mode, progress: progress);
-      }
+      await DesktopService.updateToast(body, mode: mode, progress: progress);
       if (await _surfaceReady(which)) return;
       // 更新没生效（那张刚好被收走了），落到下面重新弹一张。
     }
     for (int attempt = 0; attempt < 2; attempt++) {
-      if (onBall) {
-        await DesktopService.showBubble(title, body, mode: mode, progress: progress);
-      } else {
-        await DesktopService.showToast(title, body, mode: mode, progress: progress);
-      }
+      await DesktopService.showToast(title, body, mode: mode, progress: progress);
       if (await _surfaceReady(which)) return;
       await Future<void>.delayed(const Duration(milliseconds: 150));
     }
   }
 
-  /// 原生层确认某个浮层已经真的画出来了。
+  /// 原生层确认通知卡已经真的画出来了。
   ///
   /// 只看 visible 会被"窗口在、内容空"骗过去，所以两个条件都要满足。
   Future<bool> _surfaceReady(String which) async {
@@ -1215,17 +1254,17 @@ class AppState extends ChangeNotifier {
     return raw['visible'] == true && raw['drawn'] == true;
   }
 
-  /// 接收中的高频进度回调：同步刷新进度面板（200ms 节流）。
-  /// 确认后的第一跳负责把面板创建出来（气泡或卡片，跟随本次流程）。
+  /// 接收中的高频进度回调：同步刷新通知卡（200ms 节流）。
+  /// 确认后的第一跳负责把进度卡创建出来。
   void _updateDesktopProgress(TransferSession session) {
-    if (!_bubbleAccepted || session.direction != TransferDirection.incoming) return;
+    if (!_toastAccepted || session.direction != TransferDirection.incoming) return;
     if (session.status.isFinished || _desktopSuppressed) return;
     final DateTime now = DateTime.now();
     if (_progressSurfaceShown &&
-        now.difference(_lastBubbleUpdate).inMilliseconds < 200) {
+        now.difference(_lastProgressUpdate).inMilliseconds < 200) {
       return;
     }
-    _lastBubbleUpdate = now;
+    _lastProgressUpdate = now;
     final int percent = (session.progress * 100).round();
     final String speed = session.bytesPerSecond > 0
         ? ' · ${Format.bytes(session.bytesPerSecond)}/s'
@@ -1234,7 +1273,6 @@ class AppState extends ChangeNotifier {
     if (!_progressSurfaceShown) {
       _progressSurfaceShown = true;
       unawaited(_desktopNotice(
-        onBall: _useBallForFlow,
         title: '正在接收',
         body: '${session.peerAlias} 发来的 ${session.files.length} 个文件',
         mode: DesktopService.bubbleProgress,
@@ -1242,7 +1280,6 @@ class AppState extends ChangeNotifier {
       ));
     } else {
       unawaited(_desktopNotice(
-        onBall: _useBallForFlow,
         title: '正在接收',
         body: '正在接收 ${session.peerAlias} 的 ${session.files.length} 个文件…',
         mode: DesktopService.bubbleProgress,
@@ -1253,45 +1290,35 @@ class AppState extends ChangeNotifier {
   }
 
   /// 接收流程结束：完成态切"打开目录"，取消/中断态显示提示
-  /// （原生层 3 秒后自动收起）；悬浮球缩回把手。
+  /// （原生层 3 秒后自动收起）。
   void _notifyDesktopFinished(TransferSession session) {
     if (session.direction != TransferDirection.incoming) return;
-    // 本次流程有没有在桌面上露过面：气泡确认过 / 卡片在展 / 询问气泡在展。
-    // 什么都没露过（比如用户全程看着主窗口）就不必打扰。
-    final bool surfaceActive = _bubbleAccepted || _toastShown || _bubbleShown;
-    final bool flowOnBall = _useBallForFlow;
-    _bubbleShown = false;
-    _bubbleAccepted = false;
+    // 本次流程有没有在桌面上露过面。用户全程看着主窗口就不必打扰。
+    final bool surfaceActive = _toastAccepted || _toastShown;
     _toastShown = false;
+    _toastAccepted = false;
     _progressSurfaceShown = false;
-    if (_desktopSuppressed || !surfaceActive) {
-      unawaited(DesktopService.collapseBall());
-      return;
-    }
+    if (_desktopSuppressed || !surfaceActive) return;
     if (session.status == TransferStatus.completed) {
       unawaited(_desktopNotice(
-        onBall: flowOnBall,
         title: '接收完成',
         body: '${session.files.length} 个文件已保存，是否打开保存目录？',
         mode: DesktopService.bubbleDone,
       ));
     } else {
-      // 发送方取消（/cancel）或连接中断：在原卡片上显示提示，
+      // 发送方取消（/cancel）或连接中断：在原卡上显示提示，
       // 原生层按 mode=canceled 的存活时间（3 秒）自动收起，回到原状态。
-      // 原来那张卡要是已经超时收掉了，就新弹一张——不然这条提示会被吞掉，
-      // 用户根本不知道传输结束了。
+      // 原来那张卡要是已经超时收掉了，就新弹一张——不然这条提示会被吞掉。
       final String hint = session.status == TransferStatus.canceled
           ? '${session.peerAlias} 取消了发送'
           : '与 ${session.peerAlias} 的连接中断，传输未完成';
       unawaited(_desktopNotice(
-        onBall: flowOnBall,
         title: '传输已结束',
         body: hint,
         mode: DesktopService.bubbleCanceled,
         isUpdate: true,
       ));
     }
-    unawaited(DesktopService.collapseBall());
   }
 
   /// 原生层推回的事件统一入口。
@@ -1306,39 +1333,17 @@ class AppState extends ChangeNotifier {
           notifyListeners();
         }
         break;
-      case 'onBallPosition':
-        // 拖动结束：记住球的最终位置，下次启用时原样恢复。
-        final Object? bx = args['x'];
-        final Object? by = args['y'];
-        final Object? bs = args['snapped'];
-        final Object? be = args['edge'];
-        if (bx is int && by is int) {
-          await updateSettings(settings.copyWith(
-            ballPosX: bx,
-            ballPosY: by,
-            ballSnapped: bs is bool ? bs : false,
-            ballEdge: be is int ? be : -1,
-          ));
-        }
-        break;
-      case 'onBallClicked':
-        // 有待处理的请求就在球旁边弹询问气泡，否则把主窗口叫回来。
-        final IncomingRequest? request = incoming;
-        if (request != null) {
-          _showIncomingBubble(request);
-        } else {
-          await DesktopService.showWindow();
-        }
       case 'onWindowRestored':
         // 用户回到主窗口：桌面提醒退场，后续进度/完成由主窗口呈现。
         _desktopSuppressed = true;
-        _bubbleShown = false;
-        _bubbleAccepted = false;
         _toastShown = false;
+        _toastAccepted = false;
+        break;
       case 'onBubbleAction':
+        // 事件名沿用原生层旧值（通知卡按钮），不要再引入新名称。
         final String action = args['action']?.toString() ?? '';
         if (action == 'accept' && incoming != null) {
-          _bubbleAccepted = true;
+          _toastAccepted = true;
           _progressSurfaceShown = false;
           acceptIncoming();
         } else if (action == 'dismiss') {
@@ -1346,25 +1351,20 @@ class AppState extends ChangeNotifier {
         } else if (action == 'openFolder') {
           await _openSaveFolder();
         }
+        break;
       case 'onFilesDropped':
         // 主窗口接到拖拽：路径交给状态机展开、入清单，外壳会切到发送页。
         final Object? raw = args['paths'];
         if (raw is List<Object?>) {
           await addDroppedPaths(raw.whereType<String>().toList());
         }
+        break;
       case 'onToastClicked':
         // C++ 层已恢复窗口并停掉闪烁/卡片，这里同步状态即可。
         _desktopSuppressed = true;
-        _bubbleShown = false;
-        _bubbleAccepted = false;
         _toastShown = false;
+        _toastAccepted = false;
         break;
-      case 'onBubbleTimeout':
-        // 询问态超时算用户没表态：球缩回把手，流程结束。
-        if (!_bubbleAccepted) {
-          _bubbleShown = false;
-          unawaited(DesktopService.collapseBall());
-        }
     }
   }
 

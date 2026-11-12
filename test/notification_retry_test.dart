@@ -27,7 +27,6 @@ class _NativeStub {
 
   final List<String> calls = <String>[];
   int showToastCount = 0;
-  int showBubbleCount = 0;
 
   /// surfaceStatus 返回 drawn=true 之前要等的 show 次数。
   int drawnAfterShowCount = 1;
@@ -46,24 +45,10 @@ class _NativeStub {
       case 'showToast':
         showToastCount++;
         return null;
-      case 'showBubble':
-        showBubbleCount++;
-        return null;
       case 'surfaceStatus':
-        final bool drawn =
-            showToastCount >= drawnAfterShowCount ||
-                showBubbleCount >= drawnAfterShowCount;
+        final bool drawn = showToastCount >= drawnAfterShowCount;
         return <String, Object?>{
           'toast': <String, Object?>{
-            'visible': drawn,
-            'active': drawn,
-            'drawn': drawn,
-            'left': 100,
-            'top': 100,
-            'right': 400,
-            'bottom': 300,
-          },
-          'bubble': <String, Object?>{
             'visible': drawn,
             'active': drawn,
             'drawn': drawn,

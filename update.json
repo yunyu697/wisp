@@ -1,11 +1,11 @@
 {
-  "version": "1.0.33",
-  "notes": "设置页新增「开机启动」：登录系统后自动运行 Wisp，在后台等着收文件，Windows、macOS、Linux 三端都支持，不需要管理员授权。开关状态每次回查系统，设置没被系统接受时会明确提示；同时补上了 1.0.31、1.0.32 的更新日志。",
-  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v1.0.33/wisp-windows-x64-1.0.33-setup.exe",
+  "version": "2.0.0",
+  "notes": "2.0.0 改为聊天式界面：宽屏三栏，文字、图片、文件合并到同一会话；设备按稳定标识记住，换局域网仍能找回聊天记录；文字改用 LocalSend 官方剪贴板通道，可与官方客户端互通；接收策略支持白名单免确认；图片预览与多文件折叠；常驻悬浮球退役，来件统一走通知卡；换用青绿新图标。注意：与 1.0.33 及更早的 Wisp 之间不能互发文字，文件传输不受影响。",
+  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v2.0.0/wisp-windows-x64-2.0.0-setup.exe",
   "downloads": {
-    "windows": "https://github.com/yunyu697/wisp/releases/download/v1.0.33/wisp-windows-x64-1.0.33-setup.exe",
-    "macos": "https://github.com/yunyu697/wisp/releases/download/v1.0.33/wisp-macos-1.0.33.dmg",
-    "linux": "https://github.com/yunyu697/wisp/releases/download/v1.0.33/wisp-linux-x64-1.0.33.AppImage",
-    "android": "https://github.com/yunyu697/wisp/releases/download/v1.0.33/wisp-android-1.0.33.apk"
+    "windows": "https://github.com/yunyu697/wisp/releases/download/v2.0.0/wisp-windows-x64-2.0.0-setup.exe",
+    "macos": "https://github.com/yunyu697/wisp/releases/download/v2.0.0/wisp-macos-2.0.0.dmg",
+    "linux": "https://github.com/yunyu697/wisp/releases/download/v2.0.0/wisp-linux-x64-2.0.0.AppImage",
+    "android": "https://github.com/yunyu697/wisp/releases/download/v2.0.0/wisp-android-2.0.0.apk"
   }
 }

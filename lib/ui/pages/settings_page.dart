@@ -3,11 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/constants.dart';
 import '../../core/design/app_colors.dart';
 import '../../core/design/app_motion.dart';
 import '../../core/release_notes.dart';
+import '../../models/device.dart';
 import '../../models/network.dart';
 import '../../services/desktop_service.dart';
+import '../../services/settings_service.dart';
 import '../../services/update_service.dart';
 import '../../state/app_state.dart';
 import '../responsive.dart';
@@ -187,26 +190,9 @@ class SettingsPage extends StatelessWidget {
                   ),
                 ],
               ),
-              _Group(
-                title: '接收',
-                children: <Widget>[
-                  _SettingRow(
-                    icon: Icons.download_done_rounded,
-                    title: '自动接收',
-                    subtitle: '开启后不再弹出确认，文件直接落盘',
-                    trailing: Switch(
-                      value: state.settings.autoAccept,
-                      onChanged: state.setAutoAccept,
-                    ),
-                  ),
-                  _SettingRow(
-                    icon: Icons.folder_open_rounded,
-                    title: '保存位置',
-                    value: state.settings.saveDirectory ?? '系统下载目录 / Wisp',
-                    onTap: () => _pickDirectory(context, state),
-                  ),
-                ],
-              ),
+              // 接收策略 / 白名单 / 安全护栏：单独打包成一个 Widget，横屏两列时
+              // 整块留在同一列，不被 Wrap 拆散。
+              _receiveSection(context, state),
               _Group(
                 title: '外观',
                 children: <Widget>[
@@ -220,10 +206,10 @@ class SettingsPage extends StatelessWidget {
                   // 原生层回报 supported=false（或移动端）就藏掉，不能留一个
                   // 点了没反应、甚至显示"已开启"却根本不会启动的开关。
                   if (state.launchAtLoginSupported) const _LaunchAtLoginRow(),
-                  // 下面这几项依赖原生实现（托盘 / 首帧显隐 / Windows 服务 /
-                  // 悬浮球），各平台实现的并不是同一批：macOS 有关窗驻留菜单栏
-                  // 和桌面浮层（通知卡 / 悬浮球 / 气泡），但没有托盘最小化、
-                  // 静默启动和服务守护；Linux 连通道都没接。
+                  // 下面这几项依赖原生实现（托盘 / 首帧显隐 / Windows 服务），
+                  // 各平台实现的并不是同一批：macOS 有关窗驻留菜单栏和桌面浮层
+                  // （通知卡 / 气泡），但没有托盘最小化、静默启动和服务守护；
+                  // Linux 连通道都没接。悬浮球设置已退役，不再出现在任何平台。
                   if (DesktopService.supportsTrayMinimize)
                     _SettingRow(
                       icon: Icons.close_rounded,
@@ -244,26 +230,6 @@ class SettingsPage extends StatelessWidget {
                         onChanged: state.setSilentStart,
                       ),
                     ),
-                  // 悬浮球：Windows 是自绘分层窗口，macOS 是 NSPanel。
-                  // 没有原生实现的平台不显示这个开关。
-                  if (DesktopService.supportsFloatingBall) ...<Widget>[
-                    _SettingRow(
-                      icon: Icons.circle_rounded,
-                      title: '桌面悬浮球',
-                      subtitle: '桌面上常驻一个可拖动的圆球，收到文件时在旁边弹出气泡',
-                      trailing: Switch(
-                        value: state.settings.floatingBall,
-                        onChanged: state.setFloatingBall,
-                      ),
-                    ),
-                    _SettingRow(
-                      icon: Icons.touch_app_rounded,
-                      title: '悬浮球展开延时',
-                      subtitle: '收成把手后，鼠标悬停多久自动展开',
-                      value: _delayLabel(state.settings.ballShowDelayMs),
-                      onTap: () => _pickBallDelay(context, state),
-                    ),
-                  ],
                   if (DesktopService.supportsServiceGuard) ...<Widget>[
                     _SettingRow(
                       icon: Icons.health_and_safety_rounded,
@@ -808,49 +774,632 @@ class SettingsPage extends StatelessWidget {
     await state.setUpdateCheckHours(picked);
   }
 
-  static String _delayLabel(int ms) {
-    switch (ms) {
-      case 0:
-        return '立即';
-      case 800:
-        return '0.8 秒';
-      case 1500:
-        return '1.5 秒';
-      default:
-        return '0.3 秒';
-    }
+  // ---------------------------------------------------------------------------
+  // 接收策略 / 白名单 / 安全护栏
+  // ---------------------------------------------------------------------------
+
+  /// 「接收」分组。打包成一个 Widget，横屏两列重排时整块留在同一列。
+  Widget _receiveSection(BuildContext context, AppState state) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(6, 0, 6, 10),
+            child: Text(
+              '接收',
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.6,
+                  ),
+            ),
+          ),
+          _policyCard(context, state),
+          const SizedBox(height: 12),
+          _trustedCard(context, state),
+          const SizedBox(height: 12),
+          // 保留「保存位置」：与旧的自动接收开关同组，测试也依赖这个文案。
+          WispCard(
+            padding: EdgeInsets.zero,
+            child: _SettingRow(
+              icon: Icons.folder_open_rounded,
+              title: '保存位置',
+              value: state.settings.saveDirectory ?? '系统下载目录 / Wisp',
+              onTap: () => _pickDirectory(context, state),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _warningCard(context),
+          const SizedBox(height: 12),
+          _guardrailCard(context, state),
+          const SizedBox(height: 12),
+          _scopeCard(context, state),
+        ],
+      ),
+    );
   }
 
-  Future<void> _pickBallDelay(BuildContext context, AppState state) async {
-    const Map<String, int> options = <String, int>{
-      '立即': 0,
-      '0.3 秒': 300,
-      '0.8 秒': 800,
-      '1.5 秒': 1500,
-    };
-    final int? picked = await showModalBottomSheet<int>(
-      context: context,
-      constraints: const BoxConstraints(maxWidth: 480),
-      builder: (BuildContext sheetContext) => SafeArea(
-        child: RadioGroup<int>(
-          groupValue: state.settings.ballShowDelayMs,
-          onChanged: (int? v) => Navigator.of(sheetContext).pop(v),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              for (final MapEntry<String, int> entry in options.entries)
-                RadioListTile<int>(
-                  value: entry.value,
-                  title: Text(entry.key),
+  /// 三态接收策略卡片。选中项写回 [AppState.setReceivePolicy]。
+  Widget _policyCard(BuildContext context, AppState state) {
+    final ReceivePolicy current = state.settings.receivePolicy;
+    return WispCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            '接收策略',
+            style: Theme.of(context)
+                .textTheme
+                .bodyLarge
+                ?.copyWith(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '决定哪些设备发来的文件需要你点一次「接收」',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 12),
+          // 三个档位都是「自动接收」的开关。这里刻意留一处精确
+          // Text('自动接收')，兼容 settings_platform_gate_test 的文案断言；
+          // 其余提到自动接收的文案都写成长句，避免 find.text 精确匹配撞车。
+          Text(
+            '自动接收',
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: WispColors.secondaryText(context),
                 ),
-              const SizedBox(height: 8),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              for (int i = 0; i < _policyDefs.length; i++)
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                        right: i == _policyDefs.length - 1 ? 0 : 8),
+                    child: _policyOption(
+                      context,
+                      state,
+                      _policyDefs[i],
+                      selected: current == _policyDefs[i].policy,
+                    ),
+                  ),
+                ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+
+  /// 单个档位：沿用 _ThemeSelector 的 segmented 风格（GestureDetector +
+  /// AnimatedContainer），选中态用品牌青绿描边、浅色底和右上角勾。
+  Widget _policyOption(
+    BuildContext context,
+    AppState state,
+    _PolicyDef def, {
+    required bool selected,
+  }) {
+    final Color accent = WispColors.accent(context);
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        state.setReceivePolicy(def.policy);
+      },
+      child: AnimatedContainer(
+        duration: WispMotion.base,
+        curve: WispMotion.enter,
+        padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
+        decoration: BoxDecoration(
+          color: selected
+              ? accent.withValues(alpha: 0.08)
+              : WispColors.surfaceAlt(context),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? accent : WispColors.line(context),
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Stack(
+          children: <Widget>[
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Icon(
+                  def.icon,
+                  size: 18,
+                  color: selected
+                      ? accent
+                      : WispColors.secondaryText(context),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  def.title,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: selected
+                        ? accent
+                        : Theme.of(context).textTheme.bodyLarge?.color,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  def.subtitle,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    height: 1.4,
+                    color: WispColors.secondaryText(context),
+                  ),
+                ),
+              ],
+            ),
+            if (selected)
+              Positioned(
+                right: 0,
+                top: 0,
+                child: Icon(Icons.check_circle_rounded,
+                    size: 16, color: accent),
+              ),
+          ],
         ),
       ),
     );
+  }
+
+  /// 白名单设备列表 + 「＋ 添加设备」。数据只认
+  /// [WispSettings.trustedFingerprints]，与身份卡的「免确认接收」是同一份。
+  Widget _trustedCard(BuildContext context, AppState state) {
+    final List<String> trusted = state.settings.trustedFingerprints;
+    return WispCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  '白名单设备 · ${trusted.length} 台',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodyLarge
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                ),
+              ),
+              OutlinedButton(
+                onPressed: () => _showAddTrustedDevice(context, state),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: WispColors.accent(context),
+                  side: BorderSide(color: WispColors.line(context)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  textStyle: const TextStyle(fontSize: 12),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text('＋ 添加设备'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '按稳定标识（fingerprint）匹配，换 Wi-Fi、改别名都仍然生效',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 6),
+          if (trusted.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              child: Text(
+                '还没有白名单设备。点「＋ 添加设备」从附近设备里挑一台。',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            )
+          else
+            ...<Widget>[
+              for (final String fingerprint in trusted)
+                _trustedRow(context, state, fingerprint),
+            ],
+        ],
+      ),
+    );
+  }
+
+  /// 单条白名单记录。别名 / 在线状态 / 曾用 IP 尽量从在线设备或会话里补，
+  /// 都取不到就显示「离线 · 记录仍在这里」+ fingerprint 短码。
+  Widget _trustedRow(
+      BuildContext context, AppState state, String fingerprint) {
+    WispDevice? live;
+    for (final WispDevice device in state.devices) {
+      if (device.fingerprint == fingerprint) {
+        live = device;
+        break;
+      }
+    }
+    String? pastAlias;
+    String? pastIp;
+    for (final conversation in state.conversations) {
+      if (conversation.peerKey == fingerprint) {
+        pastAlias = conversation.peerAlias;
+        pastIp = conversation.peerIp;
+        break;
+      }
+    }
+    final bool online = live != null;
+    final bool found = live != null || pastAlias != null;
+    final String alias =
+        live?.alias ?? pastAlias ?? '离线 · 记录仍在这里';
+    final String ip = live?.ip ?? pastIp ?? '';
+    final String detail = ip.isEmpty ? '记录仍在这里' : '曾用 $ip';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: <Widget>[
+          Icon(
+            online ? Icons.devices_rounded : Icons.devices_other_rounded,
+            size: 20,
+            color: WispColors.secondaryText(context),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    Flexible(
+                      child: Text(
+                        alias,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ),
+                    if (found) ...<Widget>[
+                      const SizedBox(width: 6),
+                      _onlineChip(context, online),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '${_trustedShortCode(fingerprint)} · $detail',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontFeatures: const <FontFeature>[
+                          FontFeature.tabularFigures()
+                        ],
+                      ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          TextButton(
+            onPressed: () {
+              state.toggleTrusted(fingerprint);
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: WispColors.secondaryText(context),
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text('移除'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _onlineChip(BuildContext context, bool online) {
+    final Color color =
+        online ? WispColors.mint : WispColors.secondaryText(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        online ? '在线' : '离线',
+        style: TextStyle(
+            fontSize: 10, fontWeight: FontWeight.w600, color: color),
+      ),
+    );
+  }
+
+  /// 安全警告：白名单是「免打扰」不是身份认证，稳定标识由对端自报。
+  Widget _warningCard(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: WispColors.warning.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+            color: WispColors.warning.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Icon(Icons.warning_amber_rounded,
+              size: 18, color: WispColors.warning),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  '自动接收允许这些设备直接写入磁盘',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '稳定标识由对端自报，接收端没有证书验证，因此白名单是'
+                  '「免打扰」，不是身份认证。请勿在不可信的局域网里使用'
+                  '「全部自动接收」；开启 PIN 保护时，PIN 校验依然生效。',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(height: 1.5),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 护栏：超限回落确认、无稳定标识一律询问、PIN 保护当前状态。
+  /// 数值统一取 [WispProtocol]，不在这里硬编码 20 / 2 GB。
+  Widget _guardrailCard(BuildContext context, AppState state) {
+    final String limit =
+        '${WispProtocol.maxAutoAcceptFiles} 个文件 / 声明总量超过 '
+        '${_bytesLabel(WispProtocol.maxAutoAcceptBytes)}';
+    return WispCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(
+              '护栏',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyLarge
+                  ?.copyWith(fontWeight: FontWeight.w600),
+            ),
+          ),
+          _SettingRow(
+            icon: Icons.shield_outlined,
+            title: '超限回落确认',
+            subtitle: '单请求超过 $limit 时，仍然弹确认',
+            trailing: Icon(Icons.check_circle_rounded,
+                size: 18, color: WispColors.accent(context)),
+          ),
+          Divider(height: 1, indent: 52, color: WispColors.line(context)),
+          _SettingRow(
+            icon: Icons.info_outline_rounded,
+            title: '无稳定标识的设备一律询问',
+            subtitle: '老版本或匿名设备不能被加入白名单',
+            trailing: Icon(Icons.check_circle_rounded,
+                size: 18, color: WispColors.accent(context)),
+          ),
+          Divider(height: 1, indent: 52, color: WispColors.line(context)),
+          _SettingRow(
+            icon: Icons.lock_outline_rounded,
+            title: 'PIN 保护',
+            subtitle: state.settings.pinEnabled
+                ? '当前已开启；自动接收也要通过 PIN 校验'
+                : '当前未开启；开启后自动接收也要通过 PIN 校验',
+            trailing: Text(
+              state.settings.pinEnabled ? '已开启' : '未开启',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: state.settings.pinEnabled
+                        ? WispColors.accent(context)
+                        : WispColors.secondaryText(context),
+                  ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 当前生效范围：免确认设备数 / 仍需同意设备数，以及完成后的通知说明。
+  Widget _scopeCard(BuildContext context, AppState state) {
+    final ReceivePolicy policy = state.settings.receivePolicy;
+    final List<String> trusted = state.settings.trustedFingerprints;
+    int exempt = 0;
+    int consent = 0;
+    switch (policy) {
+      case ReceivePolicy.ask:
+        exempt = 0;
+        consent = state.devices.length;
+        break;
+      case ReceivePolicy.trusted:
+        exempt = trusted.length;
+        consent = state.devices
+            .where((WispDevice d) => !trusted.contains(d.fingerprint))
+            .length;
+        break;
+      case ReceivePolicy.all:
+        exempt = state.devices.length;
+        consent = 0;
+        break;
+    }
+    return WispCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            '当前生效范围',
+            style: Theme.of(context)
+                .textTheme
+                .bodyLarge
+                ?.copyWith(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: <Widget>[
+              Expanded(child: _metric(context, exempt, '台设备免确认接收')),
+              const SizedBox(width: 10),
+              Expanded(child: _metric(context, consent, '台设备仍需你同意')),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '自动接收不会弹「接收 / 忽略」，但完成后仍会发一条通知，'
+            '可以点开所在目录。',
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(height: 1.5),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _metric(BuildContext context, int value, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(
+        color: WispColors.surfaceAlt(context),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        children: <Widget>[
+          Text(
+            '$value',
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  color: WispColors.accent(context),
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 「＋ 添加设备」的轻量选择器：只列 fingerprint 非空且还没在名单里的
+  /// 在线设备，选中后走 [AppState.toggleTrusted] 加入。无稳定标识的老设备
+  /// 被过滤掉并给出提示（它们不能被加入白名单）。
+  Future<void> _showAddTrustedDevice(
+      BuildContext context, AppState state) async {
+    final List<String> trusted = state.settings.trustedFingerprints;
+    final List<WispDevice> eligible = <WispDevice>[];
+    int anonymous = 0;
+    for (final WispDevice device in state.devices) {
+      final String fingerprint = device.fingerprint;
+      if (fingerprint.trim().isEmpty) {
+        anonymous++;
+        continue;
+      }
+      if (trusted.contains(fingerprint)) continue;
+      eligible.add(device);
+    }
+
+    final WispDevice? picked = await showDialog<WispDevice>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        backgroundColor: WispColors.surface(dialogContext),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Text('添加白名单设备'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                if (eligible.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Text(
+                      '附近没有可添加的设备。等对方出现在「附近」列表里再来。',
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.5,
+                        color: WispColors.secondaryText(dialogContext),
+                      ),
+                    ),
+                  )
+                else
+                  ...<Widget>[
+                    for (final WispDevice device in eligible)
+                      ListTile(
+                        leading: Icon(Icons.devices_rounded,
+                            size: 20,
+                            color: WispColors.secondaryText(dialogContext)),
+                        title: Text(device.alias),
+                        subtitle: Text(
+                          '${device.shortFingerprint}… · ${device.ip}',
+                          style: Theme.of(dialogContext).textTheme.bodySmall,
+                        ),
+                        onTap: () =>
+                            Navigator.of(dialogContext).pop(device),
+                      ),
+                  ],
+                if (anonymous > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Text(
+                      '已过滤 $anonymous 台无稳定标识的设备：'
+                      '老版本或匿名设备不能被加入白名单。',
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.5,
+                        color: WispColors.warning,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
     if (picked == null) return;
-    await state.setBallShowDelay(picked);
+    await state.toggleTrusted(picked.fingerprint);
+  }
+
+  /// 白名单行里的 fingerprint 短码：前 8 位大写 + …。
+  static String _trustedShortCode(String fingerprint) {
+    if (fingerprint.isEmpty) return '—';
+    final String head = fingerprint.length <= 8
+        ? fingerprint.toUpperCase()
+        : fingerprint.substring(0, 8).toUpperCase();
+    return '$head…';
+  }
+
+  /// 把 [WispProtocol.maxAutoAcceptBytes] 格式化成「2 GB」这类文案。
+  static String _bytesLabel(int bytes) {
+    const int gb = 1024 * 1024 * 1024;
+    if (bytes >= gb && bytes % gb == 0) return '${bytes ~/ gb} GB';
+    if (bytes >= gb) return '${(bytes / gb).toStringAsFixed(1)} GB';
+    return '${bytes ~/ (1024 * 1024)} MB';
   }
 
   static void _toast(BuildContext context, String message) {
@@ -1315,3 +1864,34 @@ class _LaunchAtLoginRowState extends State<_LaunchAtLoginRow> {
     );
   }
 }
+
+/// 接收策略三态的静态描述：枚举值 + 文案 + 图标。
+class _PolicyDef {
+  const _PolicyDef(this.policy, this.title, this.subtitle, this.icon);
+
+  final ReceivePolicy policy;
+  final String title;
+  final String subtitle;
+  final IconData icon;
+}
+
+const List<_PolicyDef> _policyDefs = <_PolicyDef>[
+  _PolicyDef(
+    ReceivePolicy.ask,
+    '每次询问',
+    '所有设备都弹确认卡，最保守',
+    Icons.visibility_outlined,
+  ),
+  _PolicyDef(
+    ReceivePolicy.trusted,
+    '仅白名单设备',
+    '信任的设备直接落盘，其余仍需同意',
+    Icons.shield_outlined,
+  ),
+  _PolicyDef(
+    ReceivePolicy.all,
+    '全部自动接收',
+    '任何设备都不再询问，风险自负',
+    Icons.folder_open_rounded,
+  ),
+];

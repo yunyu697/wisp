@@ -54,7 +54,7 @@ END
 // remains consistent on all systems.
 IDI_APP_ICON            ICON                    "resources\\app_icon.ico"
 
-// 悬浮球不再用贴图：形状形变与柔和投影都在 RenderBall 里用 GDI+ 现画。
+// 桌面通知卡不用贴图：卡面、迷你 logo 与柔和投影都由原生层用 GDI+ 现画。
 
 
 /////////////////////////////////////////////////////////////////////////////

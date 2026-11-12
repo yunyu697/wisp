@@ -12,10 +12,11 @@ import '../models/message.dart';
 class MessageService {
   static const String _key = 'wisp.chats.v1';
 
-  /// 最多保留多少个会话（按最近一条消息排序）。
+  /// UI 主列表建议展示的会话数，**不再用于删除**：超出的只归档、全量保留，
+  /// P1 再做归档分区与搜索。
   static const int conversationLimit = 40;
 
-  /// 单个会话最多保留多少条消息。
+  /// 单个会话建议展示的消息数，同样**不再用于删除**（见 normalized）。
   static const int messageLimit = 300;
 
   Future<List<Conversation>> load() async {
@@ -45,20 +46,13 @@ class MessageService {
     );
   }
 
-  /// 落盘前的统一收口：按最近消息排序、截断会话数与单会话消息数。
+  /// 落盘前的统一收口：只按最近消息排序，**不再删任何记录**。
   ///
-  /// 抽成纯函数是为了能直接对"上限"写断言，不必真的读写 SharedPreferences。
-  /// 注意它**修改传入的会话对象**（trim 是原地删除），返回的也是同一批引用——
-  /// 内存里的列表和磁盘上的一致，界面上不会出现"刚发的消息下次启动就没了"。
+  /// 超出 [conversationLimit] / [messageLimit] 的只是"归档"，记录全量保留，
+  /// 主列表按建议数量展示即可；P1 再做归档分区与搜索，绝不在这里截断删除。
+  /// 抽成纯函数是为了能直接对排序行为写断言，不必真的读写 SharedPreferences。
   static List<Conversation> normalized(List<Conversation> conversations) {
-    final List<Conversation> sorted = List<Conversation>.of(conversations)
+    return List<Conversation>.of(conversations)
       ..sort((Conversation a, Conversation b) => b.lastTime.compareTo(a.lastTime));
-    final List<Conversation> kept = sorted.length > conversationLimit
-        ? sorted.sublist(0, conversationLimit)
-        : sorted;
-    for (final Conversation conversation in kept) {
-      conversation.trim(messageLimit);
-    }
-    return kept;
   }
 }

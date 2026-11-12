@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 
 /// Wisp 色板。
 ///
-/// 主色取应用图标本身的「青绿 → 浅青」，第三色珊瑚只用在极小面积的点缀上
-/// （图标上那颗正在移动的数据点）。中性色偏暖，和图标那层暖白底同源，
-/// 避免出现「暖白图标 + 冷灰界面」的割裂感。
+/// 主色取应用图标本身的「青绿 → 浅青」：方案 C 的 squircle 底板就是这道
+/// 135° 渐变，白色消息卡叠在上面；第三色珊瑚只用在极小面积的点缀上
+/// （图标右上角那颗正在移动的数据点）。中性色偏暖，与界面底色同源，
+/// 保证深色/浅色主题下图标与界面都是同一套色。
 ///
 /// 原生层（`windows/runner/flutter_window.cpp` 的 `kBrand` / `kAccent`）
 /// 与这里是同一套值，改色必须两边一起改，否则通知卡和界面会不同色。
@@ -13,10 +14,10 @@ class WispColors {
   const WispColors._();
 
   // ---- 品牌 ----
-  static const Color teal = Color(0xFF0E7C86); // 图标卡片深端
-  static const Color tealLight = Color(0xFF3AC8CB); // 图标卡片浅端
+  static const Color teal = Color(0xFF0E7C86); // 图标底板深端
+  static const Color tealLight = Color(0xFF3AC8CB); // 图标底板浅端
   static const Color mint = Color(0xFF2FBF9A); // 第三色（进度环收尾）
-  static const Color coral = Color(0xFFFF7A59); // 图标上那颗点，用量极小
+  static const Color coral = Color(0xFFFF7A59); // 图标右上角那颗点，用量极小
 
   static const LinearGradient brandGradient = LinearGradient(
     begin: Alignment.topLeft,

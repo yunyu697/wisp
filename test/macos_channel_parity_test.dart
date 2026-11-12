@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// 守住 Dart ↔ macOS 原生层的通道契约。
 ///
-/// 背景：macOS 侧曾经**完全没有**实现通知卡/悬浮球这些方法，Dart 调用会
+/// 背景：macOS 侧曾经**完全没有**实现通知卡这些方法，Dart 调用会
 /// 收到 `FlutterMethodNotImplemented` 然后被 `catch` 静默吞掉——界面上什么
 /// 都不发生，日志里什么都没有，用户只能看到"点了没反应"。这类问题在运行时
 /// 测不出来（回归测试跑在 Linux/Windows 上），所以这里直接在源码层面比对：
@@ -39,10 +39,7 @@ void main() {
 
   /// Dart 侧监听的原生事件。少发一个，对应的交互就哑掉。
   const List<String> events = <String>[
-    'onBallClicked',
-    'onBallPosition',
     'onBubbleAction',
-    'onBubbleTimeout',
     'onFilesDropped',
     'onToastClicked',
     'onWindowVisibility',

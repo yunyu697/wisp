@@ -71,7 +71,7 @@ Wisp 是一个局域网文件互传工具，用 Flutter 重写 LocalSend 的体�
 
 ### 配色（1.0.10 起）
 
-界面、图标、桌面层的通知卡/气泡/球把手共用同一套取值，全部集中在
+界面、图标、桌面通知卡共用同一套取值，全部集中在
 `lib/core/design/app_colors.dart`；原生层的 `kBrand` / `kText` / `kLine` 等常量
 （`windows/runner/flutter_window.cpp` 顶部）与之逐值对齐——**改色必须两边同时改**，
 否则会出现"界面青绿、通知卡另一样"的割裂。
@@ -119,8 +119,8 @@ lib/
 │   ├── receiver_service.dart     接收端 HTTP(S) 服务
 │   ├── sender_service.dart       发送端：prepare → upload
 │   ├── settings_service.dart     偏好持久化
-│   ├── desktop_service.dart      托盘 / 悬浮球 / 气泡 / 通知的 MethodChannel 封装
-│   ├── notification_router.dart  三种提醒落点的唯一判定（规则见「通知分流」）
+│   ├── desktop_service.dart      托盘 / 桌面通知卡的 MethodChannel 封装
+│   ├── notification_router.dart  两种提醒落点（应用内 / 桌面通知卡）的唯一判定
 │   └── history_service.dart      历史持久化
 ├── selftest/selftest.dart    命令行自测入口（--wisp-selftest / --wisp-send）
 ├── state/app_state.dart      全局状态中枢（ChangeNotifier）
@@ -200,23 +200,20 @@ MSI 定义在 `packaging/windows/wisp.wxs`（WiX v5），由 CI 用
 
 ### 桌面端特性（Windows）
 
-- **苹果风格图标**：squircle 轮廓 + 浅暖白底 + 青绿文件卡 + 珊瑚圆点（三色克制，无三角/箭头，不会看成纸飞机）。由 `tools/gen_icon.py` 精绘生成：1024 源图 → 7 档 ico / Android 自适应前景 / 悬浮球贴图，桌面层的品牌色（托盘徽章、球把手、通知按钮）与应用内主色同源，都是这套青绿，见上节「配色」。
+- **苹果风格图标（方案 C「不分彼此」）**：青绿 squircle 底 + 白色消息卡（带气泡尾巴与两条文字线）+ 白色描边文件卡 + 右上角珊瑚圆点，对应「文字、图片、文件都只是同一条会话里的一条消息」。矢量源是 `assets/icon/wisp_icon.svg`；`tools/gen_icon.py` 从两张 1024 源图缩放分发到 7 档 ico、macOS/AppIcon、iOS/AppIcon、Android mipmap 与自适应前景、Web icons（共 47 个资产）。Windows / macOS 通知卡左上角的迷你 logo 由原生层现画（GDI+ / NSBezierPath），已按同一份 SVG 归一化坐标重画成方案 C 的两张卡构图，改图标时两处要一起改；macOS 菜单栏图标是 20pt 单色模板图，系统会自动着色，只保留主卡轮廓与实心面积，不套用彩色构图。桌面层品牌色（托盘徽章、通知按钮）与应用内主色同源，都是这套青绿，见上节「配色」。
 - **关闭最小化到托盘**：点右上角关闭只是收进托盘，后台继续接收文件；托盘右键可退出。设置里可以关掉这个行为。
-- **自绘通知卡片**（悬浮球关闭 + 主窗口隐藏时）：托盘图标播放品牌色圆点的呼吸徽章动画（8 帧正弦渐隐渐显），右下角滑入一张与全局设计语言一致的通知卡——询问态（迷你图标 + 标题 + 正文 + 等宽的「接收/忽略」按钮）→ 进度态（进度条 + 百分比）→ 完成态（「打开目录/关闭」），进度更新会自动顺延存活时间；点卡片空白处打开主窗口，其余自动收起，不用系统 toast。
-- **通知分流（互斥不打扰）**：三种提醒（应用内弹层 / 桌面通知卡 / 悬浮球气泡）由 `lib/services/notification_router.dart` 一处判定，规则见下节。桌面通知与气泡共用同一个绘制函数（`DrawCardContent`），字体、行距、按钮、进度条完全一致。
+- **自绘通知卡片**（主窗口隐藏时）：托盘图标播放品牌色圆点的呼吸徽章动画（8 帧正弦渐隐渐显），右下角滑入一张与全局设计语言一致的通知卡——询问态（迷你图标 + 标题 + 正文 + 等宽的「接收/忽略」按钮）→ 进度态（进度条 + 百分比）→ 完成态（「打开目录/关闭」），进度更新会自动顺延存活时间；点卡片空白处打开主窗口，其余自动收起，不用系统 toast。
+- **通知分流（互斥不打扰）**：两种提醒（应用内弹层 / 桌面通知卡）由 `lib/services/notification_router.dart` 一处判定，规则见下节。桌面通知卡由 `DrawCardContent` 统一绘制，字体、行距、按钮、进度条完全一致。
 - **拖拽发送**（1.0.11）：把文件 / 文件夹从资源管理器拖进主窗口，原生层接住 `WM_DROPFILES` 把 UTF-8 路径回传 Dart，**文件夹自动递归展开**（保留「根目录/相对路径」层级，接收端能还原目录结构），加入待发清单后自动切到发送页。拖进来的内容与已选内容按路径去重，全是快捷方式或没有读取权限的路径时明确提示。自动化验证用 `tools/probe_drop.dart`：自造 `HDROP` 内存块投递真实的 `WM_DROPFILES`，覆盖「原生解析 → 通道 → Dart 展开 → 清单」整条链。
 - **历史记录逐条操作**（1.0.11）：点任意一条记录弹出操作面板——**再次发送**（源文件还在原位时，把文件放回待发清单并对端仍在线时自动选中，旧记录没有存路径则提示）、**打开所在目录**（入站记录直达落盘目录）、**删除这条记录**（只删本机记录，不影响已传文件）。出站记录保存源文件路径、入站记录保存落盘目录与对端 IP，旧版本的历史记录缺这些字段也能正常显示，只是没有对应操作。
-- **通知分流规则**（判定只看两个维度：主窗口「可见且是当前激活窗口」、悬浮球是否启用）：
+- **通知分流规则**（判定只看一个维度：主窗口「可见且是当前激活窗口」）：
 
-  | 悬浮球 | 主窗口 | 提示方式 |
-  | --- | --- | --- |
-  | 未启用 | 开着且是激活窗口 | 应用内弹层 |
-  | 未启用 | 没开 / 开着但被切走 | 桌面通知卡 |
-  | 启用 | 开着且是激活窗口 | 应用内弹层 |
-  | 启用 | 没开 / 开着但被切走 | 悬浮球气泡 |
+  | 主窗口 | 提示方式 |
+  | --- | --- |
+  | 开着且是激活窗口 | 应用内弹层 |
+  | 没开 / 开着但被切走 | 桌面通知卡 |
 
-  任何时刻主窗口重新获得焦点（点任务栏、Alt+Tab、点通知卡空白处），桌面上的通知/气泡立刻退场，改由应用内弹层接管。气泡位置跟着**可见内容**走：球展开时贴球体、吸附缩成把手时贴把手，朝远离屏幕边缘的一侧弹出，放不下就翻面，最后统一夹回工作区。
-- **桌面悬浮球**（设置 → 系统 → 桌面悬浮球）：GDI+ 逐像素 alpha 渲染的圆形球体（带柔和投影），可任意拖动；首次启用出现在桌面右下角，**拖动后的位置会被记住**，重启 / 重新启用后原地恢复（含吸附状态）；拖到屏幕边缘自动吸附并**缩成一个小把手**，鼠标悬停（延时可在设置里调：立即/0.3/0.8/1.5 秒）自动展开，鼠标离开后自动缩回；有文件请求时自动展开并播放呼吸动画提示，点球弹出气泡——询问接收 → 传输进度 → 完成后询问打开保存目录，全流程不用打开主窗口。
+  任何时刻主窗口重新获得焦点（点任务栏、Alt+Tab、点通知卡空白处），桌面通知卡立刻退场，改由应用内弹层接管。
 - **最小窗口 420×690**：宽度限制来自布局（再窄会错位），高度则按「刚好完整显示」标定——最窄宽度下首页（页头 + 身份卡 + 雷达 + 说明 + 「输入 IP 直接连接」按钮）内容高 617，加上 71 的底部导航正好 688。所以 690 之下首页一屏放得下、不需要滚动，再矮就会把按钮挤出首屏。`test/goldens/14-min-window.png` 与其中的 `maxScrollExtent == 0` 断言会盯着这条线。
 - **横竖屏自适应**：竖屏保持底部导航 + 单栏（手机观感）；横屏 / 宽窗口自动切到**左侧导航栏 + 限宽居中的多栏布局**——不是把元素拉宽，而是重新排布：附近页设备变两列网格、发送页左「发什么」右「发给谁」双栏、设置页分组两列、传输页内容居中限宽。判定见 `lib/ui/responsive.dart`（`isWideLayout`，以 orientation 为准）。
 - **服务守护**（设置 → 系统 → 服务守护）：可选安装一个 Windows 服务（WispKeepAlive）。应用被误关、崩溃时自动拉起，开机登录后自动恢复；托盘「退出」属于用户主动行为，服务会尊重（写入标记文件，不再拉起），下次手动启动或重新登录时自动解除。安装/卸载各触发一次 UAC 授权。装好之后会多出一行「**重启守护服务**」——服务卡在停止中、或应用被反复拉起时用它（`sc stop` 之后要等约 3 秒 SCM 才允许 `sc start`，代码里用 `ping -n 4` 等这段，比 `timeout` 命令在无控制台时可靠）。
@@ -234,12 +231,9 @@ Windows 那套「托盘 + 自绘分层窗口」在 macOS 上没有对应物，1.
   存活 30s / 8s / 3s，按钮点击回调与 Windows 完全相同（`accept` / `dismiss` / `openFolder`）。
   淡入只改 `alphaValue`、**不动位置**——位置一动，动画丢帧就会让卡片停在屏幕外，
   这正是 Windows 上「通知要第二次才出现」的成因，不在这里重犯。
-- **悬浮球**：可拖动、拖到工作区边缘 32pt 内自动吸附、静置 1s 淡到 25%、悬停 0.12s 恢复、
-  鼠标离开 0.7s 收成贴边把手、有请求时展开并播放心跳。**窗口尺寸就是可见形状的尺寸**：
-  macOS 的透明窗口边界照样会吃掉点击，窗口留透明边距等于在球周围放一圈点不动的死区。
 - **通知分流与 Windows 共用同一份判定**（`lib/services/notification_router.dart`），
-  所以三个平台「什么时候弹卡片、什么时候弹气泡」不会各说各话。
-- **状态回传**：`windowState` 带 `ballEnabled/ballExpanded/ballSnapped`，`surfaceStatus` 带
+  所以三个平台「什么时候弹卡片」不会各说各话。
+- **状态回传**：`windowState` 带 `visible` + `active`（三个 `ball*` 键恒为 false），`surfaceStatus` 带
   `visible` + `drawn`。Dart 的「发 → 查 → 没出来就重发」闭环依赖这两个字段，缺一个就会
   每次都判失败、连发两次再放弃。
 - **收尾代次（generation）**：收起的淡出是异步的，期间又弹了新卡片时，旧的完成回调不能把新
@@ -370,23 +364,22 @@ golden 依赖固定输入——测试里注入了写死的设备指纹（生产�
 python tools/probe_localsend.py   # 模拟官方 LocalSend 客户端，验证组播发现是否互通
 python tools/probe_announce.py    # 抓 Wisp 自己发出的 announce，逐字段对照官方解析要求
 python tools/probe_send.py        # 模拟发送方向本机发文件，验证接收提醒全链路
-python tools/probe_ui.py windows  # 列出主窗口/悬浮球/气泡/通知的窗口状态
+python tools/probe_ui.py windows  # 列出主窗口/通知卡的窗口状态
 python tools/probe_ui.py shot     # 截取主窗口并测平均亮度（判断黑屏）
 python tools/probe_toast2.py      # 通知卡像素级诊断（DPI aware，判定 ask/progress/done）
 python tools/probe_flow.py        # 卡片三态严格时序验证（等 ask → 点接收 → 追踪到 done）
-python tools/probe_ball_mem.py    # 悬浮球位置记忆验证（拖到左缘 → 校验吸附与落盘）
 python tools/probe_shot.py pid 1234 out.png   # 把任意窗口 PrintWindow 存成 PNG（肉眼看界面）
 python tools/probe_shot_nopil.py class WISP_TOAST toast.png  # 同上，但不依赖 Pillow
 python tools/probe_https.py       # 连接收端的 /info 并打印证书 SHA-256 指纹（验 TLS 真的开了）
 python tools/probe_click.py 180 673           # 物理坐标真实点击（Flutter 只认真实输入）
-python tools/gen_icon.py          # 重新生成苹果风格图标与悬浮球贴图
+python tools/gen_icon.py          # 从 1024 源图重新分发全平台图标资产
 ```
 
 `probe_shot.py` 支持 `class` / `title` / `pid` 三种定位方式——**官方 LocalSend 与 Wisp
 同为 Flutter 应用、窗口类名完全相同**，同机对照时必须按 PID 取窗口，否则会截到对方。
 
-> 悬浮球与通知窗口用 GDI+ 逐像素 alpha 渲染（`UpdateLayeredWindow`），
-> 贴图来自 `windows/runner/resources/ball.png`（RCDATA 资源）。
+> 桌面通知卡用 GDI+ 逐像素 alpha 渲染（`UpdateLayeredWindow`），
+> 图形全部现画，不依赖位图贴图。
 
 ### 受控端到端自测入口（1.0.9）
 
@@ -404,10 +397,11 @@ wisp.exe --wisp-send=192.168.0.168:53317 --wisp-file=C://a.zip --wisp-https
 
 - 结果写进 JSON 报告（GUI 子系统没有控制台，报告文件是唯一可靠输出），
   退出码 0 = 全部通过。实现见 `lib/selftest/selftest.dart`。
-- `--wisp-selftest` 的四步：`send_loopback`（96 KB 随机数据逐字节校验，内置接收端
+- `--wisp-selftest` 的步骤：`send_loopback`（96 KB 随机数据逐字节校验，内置接收端
   **严格校验会话号与令牌**——1.0.11 之前它来者不拒，把"发送端拿本地会话号上传"的
-  bug 掩盖了）、`toast_visible`（通知卡必须可见且完整落在工作区内）、`bubble_visible`
-  （气泡可见、不越界、不压住悬浮球）、`ball_hidden_bubble`（把手态气泡位置）。
+  bug 掩盖了）、`toast_visible`（通知卡必须可见且完整落在工作区内）、
+  `toast_first_shot` / `toast_painted` / `surface_drawn`（第一次弹出、像素真的画出来、
+  `visible` + `drawn` 复查）与真实入站流程、失焦流程、主窗口黑屏复查。
 - 断言全部基于原生窗口的真实矩形（新通道 `debugWindows`），不靠截图肉眼看。
 
 另有 **TLS 端到端专项**（`test/lan_tls_test.dart`）：接收端用真 `ReceiverService`

@@ -17,12 +17,11 @@ import 'package:wisp/ui/pages/messages_page.dart';
 /// 完全够用，真实的收发链路由 `message_test.dart` 覆盖。
 const String _peerKey = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 
-WispDevice _peer({bool capable = true}) => WispDevice(
+WispDevice _peer() => WispDevice(
       alias: 'Tyler 的 iPhone',
       ip: '192.168.1.31',
       fingerprint: _peerKey,
       kind: DeviceKind.mobile,
-      messageCapable: capable,
     );
 
 Conversation _conversation({int unread = 0}) => Conversation(
@@ -141,15 +140,19 @@ void main() {
     expect(conversation.messages.single.isOutgoing, isTrue);
   });
 
-  testWidgets('对方不支持消息时，聊天页明说只能收发文件', (WidgetTester tester) async {
+  testWidgets('所有 LocalSend 设备都能发消息（messageCapable 门控已删）', (WidgetTester tester) async {
     final AppState state = await _pump(
       tester,
       const ChatPage(peerKey: _peerKey),
-      device: _peer(capable: false),
+      device: _peer(),
     );
     state.seedConversationForTest(_conversation());
     await tester.pump(const Duration(milliseconds: 400));
 
-    expect(find.text('对方不是 Wisp（或版本太旧），只能收发文件'), findsOneWidget);
+    // 在线设备一律可输入，不再有任何「不支持消息 / 只能收发文件」的提示。
+    final TextField field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.enabled, isTrue);
+    expect(find.text('对方不是 Wisp（或版本太旧），只能收发文件'), findsNothing);
+    expect(find.text('对方不在附近，消息发不出去'), findsNothing);
   });
 }

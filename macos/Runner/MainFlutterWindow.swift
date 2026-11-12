@@ -51,11 +51,11 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
 
   // MARK: - 桌面浮层
 
-  /// 通知卡 / 悬浮球 / 气泡（见 WispOverlay.swift）。
+  /// 桌面通知卡（见 WispOverlay.swift，常驻悬浮球与贴球气泡已退役）。
   ///
   /// 之前 macOS 完全没有这套东西：通道里没有对应方法，Dart 调用静默失败，
-  /// 设置页只能把这个开关藏起来。关掉窗口驻留菜单栏之后"收到文件没有任何
-  /// 提示"就成了最影响日常的问题，所以这里补齐与 Windows 对等的能力。
+  /// 关掉窗口驻留菜单栏之后，收到文件没有任何提示就成了最影响日常的问题，
+  /// 所以这里补齐与 Windows 对等的能力。
   private func setupOverlay() {
     let overlay = WispOverlay.shared
     overlay.eventSink = { [weak self] name, args in
@@ -253,15 +253,15 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
       case "windowState":
         // 通知分流要的两维：主窗口可见 + 是否正被使用。
         // 窗口可见但用户在别的应用里（isActive=false）时，应用内弹层看不见。
-        let ball = overlay.ballState
         let visible = self.isVisible && !self.isMiniaturized
         let active = visible && self.isKeyWindow && NSApp.isActive
         result([
           "visible": visible,
           "active": active,
-          "ballEnabled": ball.enabled,
-          "ballExpanded": ball.expanded,
-          "ballSnapped": ball.snapped,
+          // 常驻悬浮球已退役：三个 ball* 键保留但恒 false（与 Dart/Windows 侧一致）。
+          "ballEnabled": false,
+          "ballExpanded": false,
+          "ballSnapped": false,
         ])
       case "isWindowVisible":
         result(self.isVisible && !self.isMiniaturized)
@@ -277,24 +277,6 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
       case "setTrayFlashing":
         self.setFlashing(args["enabled"] as? Bool ?? false)
         result(nil)
-      case "setFloatingBall":
-        var pos: NSPoint?
-        if let x = args["x"] as? Int, let y = args["y"] as? Int {
-          pos = NSPoint(x: x, y: y)
-        }
-        overlay.setFloatingBall(
-          enabled: args["enabled"] as? Bool ?? false,
-          hoverDelayMs: args["hoverDelayMs"] as? Int ?? 300,
-          savedPos: pos,
-          savedSnapped: args["snapped"] as? Bool ?? false,
-          savedEdge: args["edge"] as? Int ?? -1)
-        result(nil)
-      case "showBallAlert":
-        overlay.showBallAlert()
-        result(nil)
-      case "collapseBall":
-        overlay.collapseBall()
-        result(nil)
       case "showToast":
         overlay.showToast(title, body: body, mode: mode, progress: progress)
         result(nil)
@@ -304,22 +286,11 @@ class MainFlutterWindow: NSWindow, NSWindowDelegate {
       case "hideToast":
         overlay.hideToast()
         result(nil)
-      case "showBubble":
-        overlay.showBubble(title, body: body, mode: mode, progress: progress)
-        result(nil)
-      case "updateBubble":
-        overlay.updateBubble(body, mode: mode, progress: progress)
-        result(nil)
-      case "hideBubble":
-        overlay.hideBubble()
-        result(nil)
       case "surfaceStatus":
         // Dart 靠这个确认"发出去的通知真的画出来了"，没出来会重发。
         result(overlay.surfaceStatus)
       case "debugWindows":
         result(overlay.windowsDebug)
-      case "debugBallDim":
-        result(overlay.ballDimLevel)
       case "debugSetMainVisible":
         if args["visible"] as? Bool ?? true {
           self.revealMainWindow()

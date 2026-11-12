@@ -1,9 +1,8 @@
 """Wisp 桌面 UI 验证探针（无第三方依赖，纯 ctypes）。
 
 能力：
-  python tools/probe_ui.py windows   列出 Wisp 相关窗口（主窗口/悬浮球/气泡/通知）
+  python tools/probe_ui.py windows   列出 Wisp 相关窗口（主窗口/桌面通知卡）
   python tools/probe_ui.py shot      截取主窗口画面并输出平均亮度（判断是否黑屏）
-  python tools/probe_ui.py ball      输出悬浮球窗口矩形与位置
 """
 
 import ctypes
@@ -18,8 +17,6 @@ WM_GETICON = 0x7F
 
 CLASSES = {
     'main': 'FLUTTER_RUNNER_WIN32_WINDOW',
-    'ball': 'WISP_FLOAT_BALL',
-    'bubble': 'WISP_BUBBLE',
     'toast': 'WISP_TOAST',
 }
 
@@ -98,12 +95,6 @@ def main() -> None:
             print('主窗口不存在')
             return
         print(f'主窗口 rect={window_rect(hwnd)} 平均亮度={avg_brightness(hwnd):.1f}')
-    elif cmd == 'ball':
-        hwnd = find_by_class(CLASSES['ball'])
-        if not hwnd:
-            print('悬浮球不存在')
-            return
-        print(f'悬浮球 rect={window_rect(hwnd)} 可见={visible(hwnd)}')
     else:
         print(__doc__)
 
