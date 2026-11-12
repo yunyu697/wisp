@@ -1281,7 +1281,9 @@ void FlutterWindow::SetTrayFlashing(bool flashing) {
   }
 }
 
-RECT FlutterWindow::ToastWorkArea() const {
+// 不能加 const：定位依据 GetHandle() 是 Win32Window 的非 const 方法
+// （旧 BallWorkArea 只读成员 HWND 所以能 const，改名后换成主窗口句柄就不行了）。
+RECT FlutterWindow::ToastWorkArea() {
   // 用主窗口所在那台显示器的工作区给通知卡定位：SPI_GETWORKAREA 只给主屏，
   // 主窗口拖到副屏时通知卡应跟着落在同一块屏幕上。
   HMONITOR mon = GetHandle() != nullptr

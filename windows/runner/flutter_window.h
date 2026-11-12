@@ -147,7 +147,8 @@ class FlutterWindow : public Win32Window {
   bool RunInstaller(const std::wstring& path, const std::wstring& args);
 
   // 通知卡落点：按主窗口所在显示器的工作区定位桌面通知卡。
-  RECT ToastWorkArea() const;
+  // 不加 const：要调 Win32Window::GetHandle()，它是非 const 方法。
+  RECT ToastWorkArea();
 
   // 通知卡的独立窗口过程需要读写这些私有状态，声明为友元。
   friend LRESULT CALLBACK ToastWndProc(HWND, UINT, WPARAM, LPARAM);
