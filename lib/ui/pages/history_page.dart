@@ -11,7 +11,7 @@ import '../widgets/empty_state.dart';
 import '../widgets/wisp_card.dart';
 import '../widgets/workspace.dart';
 
-/// 记录页：按天分组，一眼能看出"什么时候、跟谁、传了多少"。
+/// 文件页（导航名）：按天分组，一眼能看出"什么时候、跟谁、传了多少"。
 ///
 /// 重做后与其它工作台页同构：宽窗口左栏概览、右栏分组清单；
 /// 窄窗口单栏。与「消息」页的区别仍然一眼可辨——这里记的是文件，不是话。
@@ -44,7 +44,7 @@ class HistoryPage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               WispPanelHeader(
-                title: '记录',
+                title: '文件',
                 subtitle: records.isEmpty ? '还没有传输记录' : '共 ${records.length} 次传输',
                 compact: true,
                 trailing: records.isEmpty
@@ -143,7 +143,7 @@ class HistoryPage extends StatelessWidget {
       slivers: <Widget>[
         SliverToBoxAdapter(
           child: WispPanelHeader(
-            title: '记录',
+            title: '文件',
             subtitle: records.isEmpty ? '还没有传输记录' : '共 ${records.length} 次传输',
             compact: true,
             padding: const EdgeInsets.fromLTRB(20, 14, 16, 10),

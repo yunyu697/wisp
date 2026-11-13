@@ -7,7 +7,7 @@ import 'package:wisp/core/utils/format.dart';
 import 'package:wisp/models/device.dart';
 import 'package:wisp/models/transfer.dart';
 import 'package:wisp/state/app_state.dart';
-import 'package:wisp/ui/pages/nearby_page.dart';
+import 'package:wisp/ui/pages/contacts_page.dart';
 import 'package:wisp/ui/pages/send_page.dart';
 import 'package:wisp/ui/pages/transfer_page.dart';
 import 'package:wisp/ui/widgets/device_tile.dart';
@@ -108,13 +108,13 @@ void main() {
   });
 
   group('界面渲染', () {
-    testWidgets('附近页在无设备时显示雷达', (WidgetTester tester) async {
-      await tester.pumpWidget(host(const NearbyPage()));
+    testWidgets('联系人页在无联系人时显示空态', (WidgetTester tester) async {
+      await tester.pumpWidget(host(const ContactsPage()));
       await tester.pump(const Duration(milliseconds: 300));
 
-      expect(find.text('附近'), findsOneWidget);
-      expect(find.text('正在寻找附近的设备'), findsOneWidget);
-      expect(find.textContaining('同一网络下的设备会自动出现'), findsOneWidget);
+      expect(find.text('联系人'), findsOneWidget);
+      expect(find.text('还没有联系人'), findsOneWidget);
+      expect(find.textContaining('选一台附近的设备'), findsOneWidget);
     });
 
     testWidgets('发送页空态给出三个入口', (WidgetTester tester) async {

@@ -170,7 +170,7 @@ class _SendPageState extends State<SendPage> {
                       ? const EmptyState(
                           icon: Icons.devices_other_rounded,
                           title: '附近还没有设备',
-                          subtitle: '先回到「附近」页，确认双方在同一个 Wi-Fi。',
+                          subtitle: '确认双方在同一个 Wi-Fi，或在「会话」页右上角手动输入 IP。',
                         )
                       : ListView.separated(
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -241,7 +241,7 @@ class _SendPageState extends State<SendPage> {
                         ? Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 20),
                             child: Text(
-                              '附近还没有设备。先回到「附近」页，确认双方在同一个 Wi-Fi。',
+                              '确认双方在同一个 Wi-Fi，或在「会话」页右上角手动输入 IP。',
                               style: Theme.of(context).textTheme.bodySmall,
                             ),
                           )

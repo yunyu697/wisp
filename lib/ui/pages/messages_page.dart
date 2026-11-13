@@ -7,10 +7,12 @@ import '../../models/contact.dart';
 import '../../models/device.dart';
 import '../../models/message.dart';
 import '../../state/app_state.dart';
-import '../widgets/device_tile.dart';
 import '../responsive.dart';
 import '../widgets/contact_inspector.dart';
+import '../widgets/device_sheets.dart';
+import '../widgets/device_tile.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/gradient_button.dart';
 import '../widgets/wisp_card.dart';
 import 'chat_page.dart';
 
@@ -31,9 +33,26 @@ class _MessagesPageState extends State<MessagesPage> {
   String? _selectedKey;
   String _query = '';
 
+  /// 已消费过的 openConversationTick，避免同一请求重复选中。
+  int _consumedOpenTick = -1;
+
+  /// 联系人页请求打开某台设备的会话：切到对应会话（宽屏选中、窄屏 push）。
+  void _consumeOpenRequest(AppState state) {
+    final String? key = state.openConversationKey;
+    if (key == null || _consumedOpenTick == state.openConversationTick) return;
+    _consumedOpenTick = state.openConversationTick;
+    final Conversation? conversation = state.conversationOf(key);
+    if (conversation == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _openChat(context, state, conversation);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final AppState state = context.watch<AppState>();
+    _consumeOpenRequest(state);
     // 真正的宽桌面窗口才铺三栏；窄窗口 / 移动端继续单栏 + push 会话页。
     if (isThreeColumnLayout(context)) return _threeColumn(context, state);
     final List<Conversation> conversations = state.conversations;
@@ -51,7 +70,7 @@ class _MessagesPageState extends State<MessagesPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      Text('消息', style: Theme.of(context).textTheme.displayLarge),
+                      Text('会话', style: Theme.of(context).textTheme.displayLarge),
                       const SizedBox(height: 4),
                       Text(
                         conversations.isEmpty
@@ -78,8 +97,8 @@ class _MessagesPageState extends State<MessagesPage> {
           SliverFillRemaining(
             hasScrollBody: false,
             child: EmptyState(
-              icon: Icons.forum_rounded,
-              title: '还没有消息',
+              icon: Icons.chat_bubble_rounded,
+              title: '还没有会话',
               subtitle: '点右上角「新消息」，选一台附近的设备，\n'
                   '把剪贴板里的一段话直接发过去——不用存成文件。',
               action: GradientTextAction(
@@ -565,12 +584,24 @@ class _DevicePicker extends StatelessWidget {
             ),
             Flexible(
               child: devices.isEmpty
-                  ? const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 28),
-                      child: Text(
-                        '先在「附近」页等设备出现，\n或者确认双方在同一网络。',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 13),
+                  ? Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 28),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          const Text(
+                            '附近暂时没有设备。\n确认双方在同一网络、都开着 Wisp，\n'
+                            '或者直接输入对方 IP 连接。',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 13),
+                          ),
+                          const SizedBox(height: 14),
+                          GhostButton(
+                            label: '手动输入 IP 连接',
+                            icon: Icons.link_rounded,
+                            onPressed: () => showManualConnect(context, state),
+                          ),
+                        ],
                       ),
                     )
                   : ListView.builder(
@@ -585,14 +616,30 @@ class _DevicePicker extends StatelessWidget {
                           leading: DeviceAvatar(kind: device.kind, size: 38),
                           title: Text(device.alias),
                           subtitle: Text(
-                            device.modelLabel,
+                            '${device.modelLabel} · ${device.ip}',
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
+                          onLongPress: () => showDeviceSheet(context, state, device),
                           onTap: () => Navigator.of(context).pop(device),
                         );
                       },
                     ),
             ),
+            if (devices.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: GhostButton(
+                        label: '手动输入 IP 连接',
+                        icon: Icons.link_rounded,
+                        onPressed: () => showManualConnect(context, state),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),

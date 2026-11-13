@@ -82,9 +82,21 @@ class AppState extends ChangeNotifier {
   int get unreadMessages =>
       conversations.fold(0, (int sum, Conversation c) => sum + c.unread);
 
-  /// 每准备好一批待发内容就 +1（拖拽进来、历史里重发），外壳据此切到发送页。
+  /// 每准备好一批待发内容就 +1（拖拽进来、历史里重发），外壳据此打开发送页。
   /// 只在变化时翻页，避免每次 notify 都把用户拽回这一页。
   int composeTick = 0;
+
+  /// 「联系人」页请求打开某个会话：[openConversationKey] 是目标 peerKey，
+  /// [openConversationTick] 让「会话」页能识别新请求（同一个 key 可能请求两次）。
+  String? openConversationKey;
+  int _openConversationTick = 0;
+  int get openConversationTick => _openConversationTick;
+
+  void requestOpenConversation(String peerKey) {
+    openConversationKey = peerKey;
+    _openConversationTick++;
+    notifyListeners();
+  }
 
   /// 发送页要自动选中的设备 IP：历史里"再次发送"时对端仍在线就顺手选上。
   /// SendPage 用掉后置回 null。
@@ -514,6 +526,15 @@ class AppState extends ChangeNotifier {
     final Contact? contact = ContactBook.byId(contacts, id);
     if (contact == null) return;
     contact.pinned = pinned;
+    await _contactBook.save(contacts);
+    notifyListeners();
+  }
+
+  /// 归档 / 取消归档：归档只是移出列表，聊天记录一条不删。
+  Future<void> archiveContact(String id, {bool archive = true}) async {
+    final Contact? contact = ContactBook.byId(contacts, id);
+    if (contact == null) return;
+    contact.state = archive ? ContactState.archived : ContactState.temporary;
     await _contactBook.save(contacts);
     notifyListeners();
   }

@@ -50,8 +50,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
 
     final Rect pillRect = tester.getRect(pill());
-    final Rect iconRect = tester.getRect(find.byIcon(Icons.radar_rounded).first);
-    final Rect labelRect = tester.getRect(find.text('附近'));
+    final Rect iconRect = tester.getRect(find.byIcon(Icons.chat_bubble_rounded).first);
+    final Rect labelRect = tester.getRect(find.text('会话'));
 
     expect(pillRect.contains(iconRect.topLeft), isTrue, reason: '高亮块没盖住图标顶部');
     expect(pillRect.contains(iconRect.bottomRight), isTrue, reason: '高亮块没盖住图标底部');
@@ -61,7 +61,7 @@ void main() {
 
   testWidgets('每个标签页的高亮块都完整包住内容', (WidgetTester tester) async {
     usePhone(tester);
-    const List<String> labels = <String>['附近', '消息', '发送', '记录', '设置'];
+    const List<String> labels = <String>['会话', '联系人', '文件', '设置'];
 
     for (int i = 0; i < labels.length; i++) {
       await tester.pumpWidget(host(i));
@@ -83,11 +83,21 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
     final double leftBefore = tester.getRect(pill()).left;
 
-    await tester.pumpWidget(host(2));
+    await tester.pumpWidget(host(3));
     await tester.pump(const Duration(milliseconds: 600));
     final double leftAfter = tester.getRect(pill()).left;
 
-    expect(leftAfter, greaterThan(leftBefore), reason: '切到第 3 项后高亮块应该往右滑');
+    expect(leftAfter, greaterThan(leftBefore), reason: '切到「设置」后高亮块应该往右滑');
+  });
+
+  testWidgets('导航项是设计稿的四项，顺序固定', (WidgetTester tester) async {
+    usePhone(tester);
+    await tester.pumpWidget(host(0));
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(wispNavItems.map((WispNavItem i) => i.label).toList(),
+        <String>['会话', '联系人', '文件', '设置']);
+    expect(kMessagesNavIndex, 0, reason: '未读角标挂在「会话」上');
   });
 
   testWidgets('golden: 底栏（浅色）', tags: 'golden', (WidgetTester tester) async {

@@ -2,37 +2,37 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/design/app_colors.dart';
 import '../../core/design/app_motion.dart';
+import '../../state/app_state.dart';
 
 class WispNavItem {
-  const WispNavItem(this.label, this.icon, this.activeIcon);
+  const WispNavItem(this.label, this.icon);
   final String label;
   final IconData icon;
-  final IconData activeIcon;
 }
 
-/// 五个导航项，底栏与侧边栏共用，保证两套导航完全一致。
+/// 四个导航项，底栏与侧栏共用，保证两套导航完全一致。
 ///
-/// 「消息」排在「附近」之后、「发送」之前：发现设备 → 说句话，是 IM 里
-/// 最自然的顺序；文件发送反而是更"重"的动作，排在后面不抢位置。
+/// 信息架构照设计稿（design/01-main-desktop.png）：
+/// 会话 / 联系人 / 文件 / 设置。设备发现收进「会话 → 新消息」，
+/// 发文件走会话与传输流程，不再各占一个导航位。
 const List<WispNavItem> wispNavItems = <WispNavItem>[
-  WispNavItem('附近', Icons.radar_rounded, Icons.radar_rounded),
-  WispNavItem('消息', Icons.forum_rounded, Icons.forum_rounded),
-  WispNavItem('发送', Icons.arrow_upward_rounded, Icons.arrow_upward_rounded),
-  WispNavItem('记录', Icons.history_rounded, Icons.history_rounded),
-  WispNavItem('设置', Icons.tune_rounded, Icons.tune_rounded),
+  WispNavItem('会话', Icons.chat_bubble_rounded),
+  WispNavItem('联系人', Icons.people_alt_rounded),
+  WispNavItem('文件', Icons.folder_rounded),
+  WispNavItem('设置', Icons.settings_rounded),
 ];
 
-/// 「消息」在导航里的位置，未读角标挂在它上面。
-const int kMessagesNavIndex = 1;
+/// 「会话」在导航里的位置，未读角标挂在它上面。
+const int kMessagesNavIndex = 0;
 
 /// 底栏尺寸常量。
 ///
 /// 图标 + 文字这一组内容高 [_contentHeight]，高亮块高 [_pillHeight]，
 /// 两者都居中于 [_barHeight]，因此高亮块必然完整包住图标和文字。
-/// 以后改字号或图标大小，间距会自动跟着走，不会再出现"高亮切到字"的情况。
 const double _barHeight = 62;
 const double _iconSize = 22;
 const double _labelGap = 3;
@@ -56,7 +56,7 @@ class WispBottomNav extends StatelessWidget {
   final int index;
   final ValueChanged<int> onChanged;
 
-  /// 「消息」上的未读数，0 表示不显示角标。
+  /// 「会话」上的未读数，0 表示不显示角标。
   final int unread;
 
   @override
@@ -164,7 +164,7 @@ class _NavCell extends StatelessWidget {
                   // 角标故意探出图标边界，不能被裁掉。
                   clipBehavior: Clip.none,
                   children: <Widget>[
-                    Icon(selected ? item.activeIcon : item.icon, size: _iconSize, color: color),
+                    Icon(item.icon, size: _iconSize, color: color),
                     if (badge > 0)
                       Positioned(
                         right: -8,
@@ -231,11 +231,9 @@ class _NavBadge extends StatelessWidget {
   }
 }
 
-/// 侧边导航：横屏 / 宽窗口下替代底部栏。
-///
-/// 竖条放在屏幕左侧，顶部放一个 logo，下面是等宽的导航项。
-/// 选中项用 Material 3 的 indicator 高亮（和底栏的渐变胶囊视觉一致：
-/// 都是"淡色块 + 主色图标/文字"），切换逻辑与底栏共用 onChanged。
+/// 侧边导航：宽窗口下替代底部栏，尺寸照设计稿——
+/// 76px 竖条，60×54 圆角导航块，图标 + 10.5px 文字，选中浅底 + 主色；
+/// 栏底是「我」的头像（用户名首字）。
 class WispNavRail extends StatelessWidget {
   const WispNavRail({
     super.key,
@@ -247,31 +245,21 @@ class WispNavRail extends StatelessWidget {
   final int index;
   final ValueChanged<int> onChanged;
 
-  /// 「消息」上的未读数，0 表示不显示角标。
+  /// 「会话」上的未读数，0 表示不显示角标。
   final int unread;
-
-  /// 侧栏图标 + 未读角标（只挂在「消息」上）。
-  Widget _railIcon(IconData icon, int i) {
-    if (i != kMessagesNavIndex || unread <= 0) return Icon(icon);
-    return Stack(
-      clipBehavior: Clip.none,
-      children: <Widget>[
-        Icon(icon),
-        Positioned(right: -10, top: -6, child: _NavBadge(count: unread)),
-      ],
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final Color surface = isDark ? const Color(0xFF111A1B) : Colors.white;
     final Color accent = WispColors.accent(context);
+    final Color idle = WispColors.secondaryText(context);
     // 从主题派生标签样式，保证继承全局字体（否则中文会回退成方框）。
     final TextStyle labelBase = Theme.of(context).textTheme.labelMedium ?? const TextStyle();
+    final String me = context.watch<AppState>().settings.alias.trim();
 
     return Container(
-      width: 88,
+      width: 76,
       decoration: BoxDecoration(
         color: surface.withValues(alpha: isDark ? 0.86 : 0.82),
         border: Border(right: BorderSide(color: WispColors.line(context))),
@@ -279,59 +267,138 @@ class WispNavRail extends StatelessWidget {
       child: SafeArea(
         child: Column(
           children: <Widget>[
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.symmetric(vertical: 6),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(13),
                 child: Image.asset(
                   'assets/icon/wisp_icon_1024.png',
-                  width: 36,
-                  height: 36,
+                  width: 34,
+                  height: 34,
                   filterQuality: FilterQuality.high,
                 ),
               ),
             ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: NavigationRail(
-                backgroundColor: Colors.transparent,
-                selectedIndex: index,
-                onDestinationSelected: (int i) {
-                  if (i == index) return;
-                  HapticFeedback.selectionClick();
-                  onChanged(i);
-                },
-                labelType: NavigationRailLabelType.all,
-                indicatorColor: accent.withValues(alpha: 0.12),
-                indicatorShape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
+            const SizedBox(height: 10),
+            for (int i = 0; i < wispNavItems.length; i++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 5),
+                child: _RailCell(
+                  item: wispNavItems[i],
+                  selected: i == index,
+                  badge: i == kMessagesNavIndex ? unread : 0,
+                  accent: accent,
+                  idle: idle,
+                  labelStyle: labelBase,
+                  onTap: () {
+                    if (i == index) return;
+                    HapticFeedback.selectionClick();
+                    onChanged(i);
+                  },
                 ),
-                selectedIconTheme: IconThemeData(color: accent, size: 22),
-                unselectedIconTheme:
-                    IconThemeData(color: WispColors.secondaryText(context), size: 22),
-                selectedLabelTextStyle: labelBase.copyWith(
-                  color: accent,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 11,
-                  letterSpacing: 0.2,
-                ),
-                unselectedLabelTextStyle: labelBase.copyWith(
-                  color: WispColors.secondaryText(context),
-                  fontWeight: FontWeight.w500,
-                  fontSize: 11,
-                ),
-                destinations: <NavigationRailDestination>[
-                  for (int i = 0; i < wispNavItems.length; i++)
-                    NavigationRailDestination(
-                      icon: _railIcon(wispNavItems[i].icon, i),
-                      selectedIcon: _railIcon(wispNavItems[i].activeIcon, i),
-                      label: Text(wispNavItems[i].label),
+              ),
+            const Spacer(),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Tooltip(
+                message: me.isEmpty ? '我的设备' : me,
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: WispColors.brandGradient,
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    me.isEmpty ? 'W' : me.characters.first.toUpperCase(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      height: 1,
+                      fontWeight: FontWeight.w700,
                     ),
-                ],
+                  ),
+                ),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 60×54 圆角导航块：设计稿 rail 的最小单元。
+class _RailCell extends StatelessWidget {
+  const _RailCell({
+    required this.item,
+    required this.selected,
+    required this.badge,
+    required this.accent,
+    required this.idle,
+    required this.labelStyle,
+    required this.onTap,
+  });
+
+  final WispNavItem item;
+  final bool selected;
+  final int badge;
+  final Color accent;
+  final Color idle;
+  final TextStyle labelStyle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color color = selected ? accent : idle;
+    return Tooltip(
+      message: item.label,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: WispMotion.fast,
+            curve: WispMotion.emphasis,
+            width: 60,
+            height: 54,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              color: selected ? accent.withValues(alpha: 0.10) : Colors.transparent,
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: <Widget>[
+                    Icon(item.icon, size: 20, color: color),
+                    if (badge > 0)
+                      Positioned(right: -9, top: -5, child: _NavBadge(count: badge)),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                SizedBox(
+                  height: 12,
+                  child: Text(
+                    item.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: labelStyle.copyWith(
+                      fontSize: 10.5,
+                      height: 1.1,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                      color: color,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

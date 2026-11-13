@@ -1332,7 +1332,7 @@ class SettingsPage extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     child: Text(
-                      '附近没有可添加的设备。等对方出现在「附近」列表里再来。',
+                      '附近没有可添加的设备。等对方出现在「会话 → 新消息」的选择器里再来。',
                       style: TextStyle(
                         fontSize: 13,
                         height: 1.5,

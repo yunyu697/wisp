@@ -9,9 +9,9 @@ import '../../core/utils/format.dart';
 import '../../models/transfer.dart';
 import '../../services/receiver_service.dart';
 import '../../state/app_state.dart';
+import '../pages/contacts_page.dart';
 import '../pages/history_page.dart';
 import '../pages/messages_page.dart';
-import '../pages/nearby_page.dart';
 import '../pages/send_page.dart';
 import '../pages/settings_page.dart';
 import '../responsive.dart';
@@ -19,7 +19,10 @@ import '../widgets/device_tile.dart';
 import '../widgets/gradient_button.dart';
 import '../widgets/wisp_bottom_nav.dart';
 
-/// 主容器：五个页面 + 磨砂底栏 + 接收请求的拦截层。
+/// 主容器：四个页面（会话 / 联系人 / 文件 / 设置）+ 磨砂底栏 + 接收请求的拦截层。
+///
+/// 导航照设计稿只有四项：设备发现收进「会话 → 新消息」，发文件通过
+/// 拖拽 / 重发触发的「发送」路由页完成，不再各占导航位。
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
@@ -28,10 +31,11 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> {
-  // 默认落在「消息」（index 1）：打开就是三栏聊天主场，而不是没做过改版的「附近」。
-  final PageController _pageController = PageController(initialPage: 1);
-  int _index = 1;
+  // 默认落在「会话」（index 0）：打开就是三栏聊天主场。
+  final PageController _pageController = PageController(initialPage: 0);
+  int _index = 0;
   int _composeTick = 0;
+  bool _sendRouteOpen = false;
   int _unread = 0;
   AppState? _state;
   bool _sheetOpen = false;
@@ -107,17 +111,24 @@ class _HomeShellState extends State<HomeShell> {
       });
     }
 
-    // 有内容进待发清单了（拖拽 / 历史重发）：直接切到发送页。
-    // 只在计数变化时翻页，避免每次 notify 都把用户拽回这一页。
-    // 发送页在导航里的位置是 2（附近 / 消息 / 发送 / 记录 / 设置）。
+    // 有内容进待发清单了（拖拽 / 历史重发）：打开发送路由页。
+    // 只在计数变化时响应，避免每次 notify 都把用户拽过去。
+    // 发送不再占导航位（设计稿四项：会话 / 联系人 / 文件 / 设置）。
     if (state.composeTick != _composeTick) {
       _composeTick = state.composeTick;
-      if (_index != 2) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && _index != 2) _select(2);
-        });
-      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_sendRouteOpen) _openSendRoute();
+      });
     }
+  }
+
+  void _openSendRoute() {
+    _sendRouteOpen = true;
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute<void>(builder: (BuildContext _) => const SendPage()),
+        )
+        .whenComplete(() => _sendRouteOpen = false);
   }
 
   Future<void> _openIncoming(IncomingRequest request) async {
@@ -154,9 +165,8 @@ class _HomeShellState extends State<HomeShell> {
       physics: const NeverScrollableScrollPhysics(),
       onPageChanged: (int index) => setState(() => _index = index),
       children: const <Widget>[
-        NearbyPage(),
         MessagesPage(),
-        SendPage(),
+        ContactsPage(),
         HistoryPage(),
         SettingsPage(),
       ],
@@ -172,9 +182,9 @@ class _HomeShellState extends State<HomeShell> {
     }
 
     // 横屏 / 宽窗口：侧边导航 + 内容区。
-    // 一般页面限宽居中（kMaxContentWidth）避免被拉伸；但消息页在真正的宽
+    // 一般页面限宽居中（kMaxContentWidth）避免被拉伸；但会话页在真正的宽
     // 桌面窗口上要铺满，才放得下「会话栏 / 消息流 / 身份卡」三栏。
-    final bool fullBleed = _index == 1 && isThreeColumnLayout(context);
+    final bool fullBleed = _index == 0 && isThreeColumnLayout(context);
     return Scaffold(
       body: Row(
         children: <Widget>[

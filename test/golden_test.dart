@@ -6,13 +6,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'package:wisp/core/design/app_theme.dart';
+import 'package:wisp/models/contact.dart';
 import 'package:wisp/models/device.dart';
 import 'package:wisp/models/message.dart';
 import 'package:wisp/models/transfer.dart';
 import 'package:wisp/services/settings_service.dart';
 import 'package:wisp/state/app_state.dart';
+import 'package:wisp/ui/pages/contacts_page.dart';
 import 'package:wisp/ui/pages/messages_page.dart';
-import 'package:wisp/ui/pages/nearby_page.dart';
 import 'package:wisp/ui/pages/send_page.dart';
 import 'package:wisp/ui/pages/settings_page.dart';
 import 'package:wisp/ui/pages/transfer_page.dart';
@@ -67,11 +68,32 @@ void main() {
     addTearDown(tester.view.reset);
   }
 
-  testWidgets('golden: 附近', (WidgetTester tester) async {
+  testWidgets('golden: 联系人', (WidgetTester tester) async {
     usePhone(tester);
-    await tester.pumpWidget(host(const NearbyPage()));
+    state.acceptDeviceForTest(WispDevice(
+      alias: 'Tyler 的 iPhone',
+      ip: '192.168.1.31',
+      fingerprint: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      kind: DeviceKind.mobile,
+    ));
+    state.acceptDeviceForTest(WispDevice(
+      alias: '客厅的 Mac mini',
+      ip: '192.168.1.42',
+      fingerprint: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      kind: DeviceKind.desktop,
+    ));
+    // acceptDeviceForTest 会顺手把联系人写进簿里（临时态）；把一台标成保留，
+    // 分组标题和置顶图钉就能一起入镜。
+    final Contact first = state.contacts.first;
+    first.state = ContactState.kept;
+
+    await tester.pumpWidget(host(const ContactsPage()));
     await tester.pump(const Duration(milliseconds: 900));
-    await expectLater(find.byType(NearbyPage), matchesGoldenFile('goldens/01-nearby.png'));
+    await expectLater(find.byType(ContactsPage), matchesGoldenFile('goldens/18-contacts.png'));
+
+    // 共用同一个 state，用完清空，避免影响后续用例。
+    state.contacts.clear();
+    state.devices.clear();
   });
 
   testWidgets('golden: 发送', (WidgetTester tester) async {
@@ -156,36 +178,6 @@ void main() {
     await tester.pumpWidget(host(const SettingsPage()));
     await tester.pump(const Duration(milliseconds: 900));
     await expectLater(find.byType(SettingsPage), matchesGoldenFile('goldens/11-settings-landscape.png'));
-  });
-
-  testWidgets('golden: 附近（横屏多设备网格）', (WidgetTester tester) async {
-    useLandscape(tester);
-    state.acceptDeviceForTest(WispDevice(
-      alias: 'Tyler 的 iPhone',
-      ip: '192.168.1.31',
-      fingerprint: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-      kind: DeviceKind.mobile,
-    ));
-    state.acceptDeviceForTest(WispDevice(
-      alias: '客厅的 Mac mini',
-      ip: '192.168.1.42',
-      fingerprint: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-      kind: DeviceKind.desktop,
-    ));
-    state.acceptDeviceForTest(WispDevice(
-      alias: 'ThinkBook-14',
-      ip: '192.168.1.57',
-      fingerprint: 'cccccccccccccccccccccccccccccccc',
-      kind: DeviceKind.desktop,
-    ));
-    await tester.pumpWidget(host(const NearbyPage()));
-    await tester.pump(const Duration(milliseconds: 900));
-    // 设备行有入场动画（StaggeredItem）：ticker 首帧才记录起点，
-    // 再补一帧把动画推到完成，否则截到的是透明态。
-    await tester.pump(const Duration(milliseconds: 400));
-    await expectLater(find.byType(NearbyPage), matchesGoldenFile('goldens/12-nearby-landscape.png'));
-    // 共用同一个 state，用完清空，避免影响后续用例。
-    state.devices.clear();
   });
 
   testWidgets('golden: 发送（横屏双列）', (WidgetTester tester) async {
