@@ -6,10 +6,15 @@ import '../../core/design/app_motion.dart';
 import '../../core/utils/format.dart';
 import '../../models/transfer.dart';
 import '../../state/app_state.dart';
+import '../responsive.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/wisp_card.dart';
+import '../widgets/workspace.dart';
 
 /// 记录页：按天分组，一眼能看出"什么时候、跟谁、传了多少"。
+///
+/// 重做后与其它工作台页同构：宽窗口左栏概览、右栏分组清单；
+/// 窄窗口单栏。与「消息」页的区别仍然一眼可辨——这里记的是文件，不是话。
 class HistoryPage extends StatelessWidget {
   const HistoryPage({super.key});
 
@@ -17,40 +22,140 @@ class HistoryPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppState state = context.watch<AppState>();
     final List<TransferRecord> records = state.history;
-    final List<Object> items = _buildItems(records);
+    if (isWideLayout(context)) {
+      return _wide(context, state, records);
+    }
+    return _narrow(context, state, records);
+  }
 
+  // ---------------------------------------------------------------- 宽窗口
+
+  Widget _wide(BuildContext context, AppState state, List<TransferRecord> records) {
+    final int outgoing =
+        records.where((TransferRecord r) => r.direction == TransferDirection.outgoing).length;
+    final int incoming = records.length - outgoing;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        WispAside(
+          width: 300,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              WispPanelHeader(
+                title: '记录',
+                subtitle: records.isEmpty ? '还没有传输记录' : '共 ${records.length} 次传输',
+                compact: true,
+                trailing: records.isEmpty
+                    ? null
+                    : TextButton(
+                        onPressed: () => _confirmClear(context, state),
+                        style: TextButton.styleFrom(
+                          foregroundColor: WispColors.secondaryText(context),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          minimumSize: const Size(0, 32),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text('清空', style: TextStyle(fontSize: 13)),
+                      ),
+              ),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                  children: <Widget>[
+                    WispCard(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
+                      child: Row(
+                        children: <Widget>[
+                          _stat(context, '全部', '${records.length}', WispColors.accent(context)),
+                          _divider(context),
+                          _stat(context, '发送', '$outgoing', WispColors.teal),
+                          _divider(context),
+                          _stat(context, '接收', '$incoming', WispColors.success),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      '记录只存在本机，随时可以清空。\n点任意一条可以「再次发送」或打开所在目录。',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(height: 1.6),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              WispPanelHeader(
+                title: '传输记录',
+                subtitle: records.isEmpty ? '传输完成后会留在这里' : '按天分组',
+              ),
+              Expanded(
+                child: records.isEmpty
+                    ? const EmptyState(
+                        icon: Icons.history_rounded,
+                        title: '传输完成后会留在这里',
+                        subtitle: '记录只存在本机，随时可以清空。',
+                      )
+                    : _list(context, state, records),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _divider(BuildContext context) => Container(
+        width: 1,
+        height: 34,
+        color: WispColors.line(context),
+      );
+
+  Widget _stat(BuildContext context, String label, String value, Color tint) {
+    return Expanded(
+      child: Column(
+        children: <Widget>[
+          Text(
+            value,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: tint,
+                ),
+          ),
+          const SizedBox(height: 3),
+          Text(label, style: Theme.of(context).textTheme.bodySmall),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------- 窄窗口
+
+  Widget _narrow(BuildContext context, AppState state, List<TransferRecord> records) {
     return CustomScrollView(
       physics: const BouncingScrollPhysics(),
       slivers: <Widget>[
         SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: <Widget>[
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text('记录', style: Theme.of(context).textTheme.displayLarge),
-                      const SizedBox(height: 4),
-                      Text(
-                        records.isEmpty ? '还没有传输记录' : '共 ${records.length} 次传输',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                ),
-                if (records.isNotEmpty)
-                  TextButton(
+          child: WispPanelHeader(
+            title: '记录',
+            subtitle: records.isEmpty ? '还没有传输记录' : '共 ${records.length} 次传输',
+            compact: true,
+            padding: const EdgeInsets.fromLTRB(20, 14, 16, 10),
+            trailing: records.isEmpty
+                ? null
+                : TextButton(
                     onPressed: () => _confirmClear(context, state),
                     style: TextButton.styleFrom(
                       foregroundColor: WispColors.secondaryText(context),
                     ),
                     child: const Text('清空', style: TextStyle(fontSize: 14)),
                   ),
-              ],
-            ),
           ),
         ),
         if (records.isEmpty)
@@ -63,52 +168,58 @@ class HistoryPage extends StatelessWidget {
             ),
           )
         else
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 110),
-            sliver: SliverList.builder(
-              itemCount: items.length,
-              itemBuilder: (BuildContext context, int index) {
-                final Object item = items[index];
-                if (item is String) {
-                  return Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 20, 4, 10),
-                    child: Text(
-                      item,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                    ),
-                  );
-                }
-                final TransferRecord record = item as TransferRecord;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: StaggeredItem(
-                    index: index,
-                    child: Dismissible(
-                      key: ValueKey<String>(record.id),
-                      direction: DismissDirection.endToStart,
-                      background: Container(
-                        alignment: Alignment.centerRight,
-                        padding: const EdgeInsets.only(right: 22),
-                        decoration: BoxDecoration(
-                          color: WispColors.danger.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Icon(Icons.delete_outline_rounded, color: WispColors.danger),
-                      ),
-                      onDismissed: (_) => state.removeHistory(record.id),
-                      child: _HistoryTile(
-                        record: record,
-                        onActions: () => _openActions(context, state, record),
-                      ),
-                    ),
-                  ),
-                );
-              },
+          SliverToBoxAdapter(child: _list(context, state, records, shrinkWrap: true, padding: const EdgeInsets.fromLTRB(20, 4, 20, 24))),
+      ],
+    );
+  }
+
+  Widget _list(
+    BuildContext context,
+    AppState state,
+    List<TransferRecord> records, {
+    bool shrinkWrap = false,
+    EdgeInsetsGeometry padding = const EdgeInsets.fromLTRB(20, 4, 20, 24),
+  }) {
+    final List<Object> items = _buildItems(records);
+    return ListView.builder(
+      shrinkWrap: shrinkWrap,
+      physics: shrinkWrap ? const NeverScrollableScrollPhysics() : null,
+      padding: padding,
+      itemCount: items.length,
+      itemBuilder: (BuildContext context, int index) {
+        final Object item = items[index];
+        if (item is String) {
+          return WispSectionLabel(
+            title: item,
+            padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+          );
+        }
+        final TransferRecord record = item as TransferRecord;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: StaggeredItem(
+            index: index,
+            child: Dismissible(
+              key: ValueKey<String>(record.id),
+              direction: DismissDirection.endToStart,
+              background: Container(
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.only(right: 22),
+                decoration: BoxDecoration(
+                  color: WispColors.danger.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Icon(Icons.delete_outline_rounded, color: WispColors.danger),
+              ),
+              onDismissed: (_) => state.removeHistory(record.id),
+              child: _HistoryTile(
+                record: record,
+                onActions: () => _openActions(context, state, record),
+              ),
             ),
           ),
-      ],
+        );
+      },
     );
   }
 
@@ -128,7 +239,6 @@ class HistoryPage extends StatelessWidget {
   }
 
   /// 单条记录的操作面板：再次发送 / 打开所在目录 / 删除。
-  /// 用底部面板而不是长按菜单——桌面和触屏都能用，且能写清楚"为什么不可用"。
   void _openActions(BuildContext context, AppState state, TransferRecord record) {
     showModalBottomSheet<void>(
       context: context,
@@ -310,7 +420,6 @@ class _HistoryTile extends StatelessWidget {
             ],
           ),
           const SizedBox(width: 2),
-          // 轻量提示"这张卡能点"，具体操作在底部面板里。
           Icon(
             Icons.more_horiz_rounded,
             size: 18,

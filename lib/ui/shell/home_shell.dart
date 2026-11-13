@@ -28,8 +28,9 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> {
-  final PageController _pageController = PageController();
-  int _index = 0;
+  // 默认落在「消息」（index 1）：打开就是三栏聊天主场，而不是没做过改版的「附近」。
+  final PageController _pageController = PageController(initialPage: 1);
+  int _index = 1;
   int _composeTick = 0;
   int _unread = 0;
   AppState? _state;

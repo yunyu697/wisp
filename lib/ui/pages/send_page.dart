@@ -15,8 +15,12 @@ import '../widgets/device_tile.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/gradient_button.dart';
 import '../widgets/wisp_card.dart';
+import '../widgets/workspace.dart';
 
 /// 发送页：左边是"要发什么"，右边是"发给谁"，底部只有一个动作。
+///
+/// 重做后与其它工作台页同构：宽窗口左主右栏（右栏 surface + 左分隔线），
+/// 窄窗口单栏 + 底部发送。
 class SendPage extends StatefulWidget {
   const SendPage({super.key});
 
@@ -73,29 +77,19 @@ class _SendPageState extends State<SendPage> {
           orElse: () => devices.isEmpty ? null : devices.first,
         );
 
-    // 横屏：左「发什么」右「发给谁」，两栏并排，避免选择面板被拉成超宽横幅。
     if (isWideLayout(context)) {
       return _wide(context, state, devices, target);
     }
     return _narrow(context, state, devices, target);
   }
 
-  Widget _header(BuildContext context, AppState state) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text('发送', style: Theme.of(context).textTheme.displayLarge),
-          const SizedBox(height: 4),
-          Text(
-            state.draft.isEmpty
-                ? '选文件、文件夹，或者直接发一段文字'
-                : '${state.draft.length} 个文件 · ${Format.bytes(state.draftBytes)}',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ],
-      ),
+  Widget _header(BuildContext context, AppState state, {Widget? trailing}) {
+    return WispPanelHeader(
+      title: '发送',
+      subtitle: state.draft.isEmpty
+          ? '选文件、文件夹，或者直接发一段文字'
+          : '${state.draft.length} 个文件 · ${Format.bytes(state.draftBytes)}',
+      trailing: trailing,
     );
   }
 
@@ -120,15 +114,94 @@ class _SendPageState extends State<SendPage> {
     );
   }
 
-  Widget _sendButton(BuildContext context, AppState state, WispDevice? target) {
+  Widget _sendButton(BuildContext context, AppState state, WispDevice? target, {bool expand = true}) {
     return GradientButton(
       label: target == null ? '附近没有可用设备' : '发送到 ${target.alias}',
       icon: Icons.arrow_upward_rounded,
+      expand: expand,
       onPressed: target == null || state.draft.isEmpty
           ? null
           : () => startSendFlow(context, state, target, pickIfEmpty: false),
     );
   }
+
+  // ---------------------------------------------------------------- 宽窗口
+
+  Widget _wide(
+    BuildContext context,
+    AppState state,
+    List<WispDevice> devices,
+    WispDevice? target,
+  ) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Expanded(
+          flex: 3,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              _header(context, state),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 6, 20, 24),
+                  child: _compose(context, state),
+                ),
+              ),
+            ],
+          ),
+        ),
+        VerticalDivider(width: 1, thickness: 1, color: WispColors.line(context)),
+        Expanded(
+          flex: 2,
+          child: Container(
+            color: WispColors.surface(context),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                WispPanelHeader(
+                  title: '发给谁',
+                  subtitle: devices.isEmpty ? '附近还没有设备' : '${devices.length} 台在线',
+                  compact: true,
+                  padding: const EdgeInsets.fromLTRB(20, 18, 16, 6),
+                ),
+                Expanded(
+                  child: devices.isEmpty
+                      ? const EmptyState(
+                          icon: Icons.devices_other_rounded,
+                          title: '附近还没有设备',
+                          subtitle: '先回到「附近」页，确认双方在同一个 Wi-Fi。',
+                        )
+                      : ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                          itemCount: devices.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 10),
+                          itemBuilder: (BuildContext context, int index) {
+                            final WispDevice device = devices[index];
+                            return _TargetRow(
+                              device: device,
+                              selected: device.key == target?.key,
+                              onTap: () {
+                                HapticFeedback.selectionClick();
+                                setState(() => _targetKey = device.key);
+                              },
+                            );
+                          },
+                        ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  child: _sendButton(context, state, target),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------- 窄窗口
 
   Widget _narrow(
     BuildContext context,
@@ -145,7 +218,7 @@ class _SendPageState extends State<SendPage> {
               SliverToBoxAdapter(child: _header(context, state)),
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
                   child: _compose(context, state),
                 ),
               ),
@@ -153,12 +226,10 @@ class _SendPageState extends State<SendPage> {
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                    child: SectionHeader(
+                    child: WispSectionLabel(
                       title: '发送到',
+                      trailing: devices.isEmpty ? null : '${devices.length} 台在线',
                       padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
-                      trailing: devices.isEmpty
-                          ? null
-                          : Text('${devices.length} 台在线', style: Theme.of(context).textTheme.labelMedium),
                     ),
                   ),
                 ),
@@ -205,90 +276,6 @@ class _SendPageState extends State<SendPage> {
       ],
     );
   }
-
-  Widget _wide(
-    BuildContext context,
-    AppState state,
-    List<WispDevice> devices,
-    WispDevice? target,
-  ) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        Expanded(
-          flex: 3,
-          child: CustomScrollView(
-            physics: const BouncingScrollPhysics(),
-            slivers: <Widget>[
-              SliverToBoxAdapter(child: _header(context, state)),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
-                  child: _compose(context, state),
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 24)),
-            ],
-          ),
-        ),
-        VerticalDivider(width: 1, thickness: 1, color: WispColors.line(context)),
-        Expanded(
-          flex: 2,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                child: Row(
-                  children: <Widget>[
-                    Text(
-                      '发送到',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                    ),
-                    const Spacer(),
-                    if (devices.isNotEmpty)
-                      Text('${devices.length} 台在线', style: Theme.of(context).textTheme.labelMedium),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: devices.isEmpty
-                    ? Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Text(
-                          '附近还没有设备。先回到「附近」页，确认双方在同一个 Wi-Fi。',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      )
-                    : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-                        itemCount: devices.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 10),
-                        itemBuilder: (BuildContext context, int index) {
-                          final WispDevice device = devices[index];
-                          return _TargetRow(
-                            device: device,
-                            selected: device.key == target?.key,
-                            onTap: () {
-                              HapticFeedback.selectionClick();
-                              setState(() => _targetKey = device.key);
-                            },
-                          );
-                        },
-                      ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                child: _sendButton(context, state, target),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
 }
 
 class _PickerPanel extends StatelessWidget {
@@ -324,7 +311,11 @@ class _PickerPanel extends StatelessWidget {
               shape: BoxShape.circle,
               gradient: WispColors.softGradient,
               boxShadow: <BoxShadow>[
-                BoxShadow(color: WispColors.teal.withValues(alpha: 0.28), blurRadius: 20, offset: const Offset(0, 8)),
+                BoxShadow(
+                  color: WispColors.teal.withValues(alpha: 0.28),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                ),
               ],
             ),
             child: const Icon(Icons.add_rounded, color: Colors.white, size: 30),

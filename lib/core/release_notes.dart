@@ -9,10 +9,15 @@ class WispReleaseNotes {
   const WispReleaseNotes._();
 
   /// 当前应用版本（与 pubspec.yaml 的 `version:` 保持一致）。
-  static const String currentVersion = '2.0.0';
+  static const String currentVersion = '2.1.0';
 
   /// 新版本在前，设置页按这个顺序展示。
   static const List<WispReleaseEntry> entries = <WispReleaseEntry>[
+    WispReleaseEntry(version: '2.1.0', changes: <String>[
+      '「附近」「发送」「记录」三页统一成与消息页一致的工作台风格：宽屏左右分栏，一侧是身份、概览或待发清单，另一侧是设备与记录主面板；窄窗口和手机仍是熟悉的单栏',
+      '启动后默认进入「消息」页：打开应用就是聊天主场，设备、文件收发照旧从底部标签切换',
+      '各页标题改为紧凑样式，页面留白与卡片风格全面对齐，三页与消息、设置看起来是同一个应用',
+    ]),
     WispReleaseEntry(version: '2.0.0', changes: <String>[
       '界面改成聊天式：宽屏下左栏是联系人与会话、中间是消息流、右栏是这台设备的身份卡；窄窗口和手机仍保持原来的五个标签',
       '设备改成按稳定标识记住，换一个局域网还能看到和同一台设备的聊天记录；只传过一次的设备留在「临时会话」，30 天没活动自动收进归档，聊天记录本身不会被删掉',
