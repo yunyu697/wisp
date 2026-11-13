@@ -1,11 +1,11 @@
 {
-  "version": "2.2.0",
-  "notes": "2.2.0 按设计稿重排信息架构：导航改为会话、联系人、文件、设置四项，新增联系人页；附近页并入新消息流程、发送改为自动打开的路由；设置页右侧新增统计与说明栏，聊天输入区支持直接选文件发送。",
-  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v2.2.0/wisp-windows-x64-2.2.0-setup.exe",
+  "version": "2.2.1",
+  "notes": "2.2.1 修复一批实机问题：偶发白屏、联系人点击不跳转、联系人按拼音排序并新增字母导航、会话内拖入文件直接发给当前设备；Android 端更新链接可点、安装包进系统下载目录且下完有安装按钮、聊天附件可点击用系统应用打开。",
+  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v2.2.1/wisp-windows-x64-2.2.1-setup.exe",
   "downloads": {
-    "windows": "https://github.com/yunyu697/wisp/releases/download/v2.2.0/wisp-windows-x64-2.2.0-setup.exe",
-    "macos": "https://github.com/yunyu697/wisp/releases/download/v2.2.0/wisp-macos-2.2.0.dmg",
-    "linux": "https://github.com/yunyu697/wisp/releases/download/v2.2.0/wisp-linux-x64-2.2.0.AppImage",
-    "android": "https://github.com/yunyu697/wisp/releases/download/v2.2.0/wisp-android-2.2.0.apk"
+    "windows": "https://github.com/yunyu697/wisp/releases/download/v2.2.1/wisp-windows-x64-2.2.1-setup.exe",
+    "macos": "https://github.com/yunyu697/wisp/releases/download/v2.2.1/wisp-macos-2.2.1.dmg",
+    "linux": "https://github.com/yunyu697/wisp/releases/download/v2.2.1/wisp-linux-x64-2.2.1.AppImage",
+    "android": "https://github.com/yunyu697/wisp/releases/download/v2.2.1/wisp-android-2.2.1.apk"
   }
 }

@@ -1,7 +1,7 @@
 name: wisp
 description: "Wisp — 只在近处发生的文件传递。局域网点对点互传，不经过任何服务器。"
 publish_to: "none"
-version: 2.2.0+36
+version: 2.2.1+37
 
 environment:
   sdk: ">=3.5.0 <4.0.0"

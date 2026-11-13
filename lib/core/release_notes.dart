@@ -9,10 +9,18 @@ class WispReleaseNotes {
   const WispReleaseNotes._();
 
   /// 当前应用版本（与 pubspec.yaml 的 `version:` 保持一致）。
-  static const String currentVersion = '2.2.0';
+  static const String currentVersion = '2.2.1';
 
   /// 新版本在前，设置页按这个顺序展示。
   static const List<WispReleaseEntry> entries = <WispReleaseEntry>[
+    WispReleaseEntry(version: '2.2.1', changes: <String>[
+      '修复偶发白屏：启动和从托盘恢复时不再被过渡动画卡在全透明的一帧；Android 启动底色改成与应用一致的暖中性色，深色模式也不会先闪一片白',
+      '联系人点了就能打开会话，包括「设备已离线、还没聊过天」的联系人；离线会话照样能翻历史，输入框会明确置灰',
+      '联系人按名称拼音首字母 A–Z 分组排序，右侧新增字母导航条，点一下直接跳到对应分组',
+      '在已打开的会话里拖入文件会直接发给当前这台设备，不再多弹一次「发给谁」',
+      'Android 更新弹层的下载链接现在能唤起浏览器；安装包下载到系统「下载」目录，下完直接给「安装」按钮',
+      'Android 聊天记录里的文件可以点了：图片仍在应用内看大图，其它文件交给系统应用打开；文件不在了会明确提示，而不是毫无反应',
+    ]),
     WispReleaseEntry(version: '2.2.0', changes: <String>[
       '导航对齐设计稿，改为四项：会话、联系人、文件、设置；侧边导航栏照稿重做——图标加文字、选中高亮，栏底是这台设备的头像',
       '新增「联系人」页：按保留、临时会话、已归档分组记住传过文件的设备，一眼看到谁在线，长按可以打开会话或归档',
