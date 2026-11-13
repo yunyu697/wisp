@@ -757,15 +757,26 @@ class AppState extends ChangeNotifier {
       );
 
   /// 发送到某台设备。返回错误文案（null 表示已发起或完成）。
-  Future<String?> sendTo(WispDevice device, {String? pin}) async {
-    if (draft.isEmpty) return '还没有选择文件';
+  ///
+  /// [files] 为空时发送待发清单 [draft]（SendPage / 重发流程）；
+  /// 传入 [files] 时直发这批文件（聊天 composer 附件），**不动 draft**。
+  Future<String?> sendTo(
+    WispDevice device, {
+    String? pin,
+    List<TransferFile>? files,
+  }) async {
+    final bool usesDraft = files == null;
+    final List<TransferFile> payload = usesDraft
+        ? List<TransferFile>.from(draft)
+        : List<TransferFile>.from(files);
+    if (payload.isEmpty) return '还没有选择文件';
 
     final TransferSession session = TransferSession(
       id: DateTime.now().microsecondsSinceEpoch.toRadixString(16),
       peerAlias: device.alias,
       peerIp: device.ip,
       direction: TransferDirection.outgoing,
-      files: List<TransferFile>.from(draft),
+      files: payload,
       peerKind: device.kind,
       status: TransferStatus.pending,
       peerFingerprint: device.fingerprint,
@@ -781,7 +792,7 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       await sender.prepare(session, device, pin: pin);
       if (session.status == TransferStatus.completed) {
-        _finishSession(session);
+        _finishSession(session, clearDraft: usesDraft);
         return null;
       }
       await sender.uploadAll(
@@ -790,7 +801,7 @@ class AppState extends ChangeNotifier {
         onProgress: _throttleNotify,
         isCanceled: () => session.status == TransferStatus.canceled,
       );
-      _finishSession(session);
+      _finishSession(session, clearDraft: usesDraft);
       return null;
     } on SendFailure catch (e) {
       session.status = TransferStatus.failed;
@@ -800,14 +811,14 @@ class AppState extends ChangeNotifier {
         sessions.remove(session);
         activeSession = null;
       } else {
-        _finishSession(session);
+        _finishSession(session, clearDraft: usesDraft);
       }
       notifyListeners();
       return e.message;
     } catch (e) {
       session.status = TransferStatus.failed;
       session.error = '$e';
-      _finishSession(session);
+      _finishSession(session, clearDraft: usesDraft);
       return '连接失败，请确认双方在同一网络';
     }
   }
@@ -826,7 +837,7 @@ class AppState extends ChangeNotifier {
     _finishSession(session);
   }
 
-  void _finishSession(TransferSession session) {
+  void _finishSession(TransferSession session, {bool clearDraft = true}) {
     // 取消和正常结束可能都会走到这里，用集合保证只记一次。
     if (!_finished.add(session.id)) return;
     // 这份集合只是去重用的，不能无限长。
@@ -839,7 +850,8 @@ class AppState extends ChangeNotifier {
       session.status = TransferStatus.canceled;
     }
     final bool success = session.status == TransferStatus.completed;
-    if (session.direction == TransferDirection.outgoing && success) {
+    // 直发（聊天 composer 附件）不经过 draft，成功与否都不能清用户的待发清单。
+    if (session.direction == TransferDirection.outgoing && success && clearDraft) {
       draft.clear();
     }
     final TransferRecord record = TransferRecord(

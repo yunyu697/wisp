@@ -14,6 +14,7 @@ import '../../services/settings_service.dart';
 import '../../services/update_service.dart';
 import '../../state/app_state.dart';
 import '../responsive.dart';
+import '../widgets/device_tile.dart';
 import '../widgets/update_sheet.dart';
 import '../widgets/wisp_card.dart';
 
@@ -38,7 +39,8 @@ class SettingsPage extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   state.receiverRunning
-                      ? '接收服务已就绪 · 端口 ${state.settings.port}'
+                      ? '接收服务已启动 · 局域网内可见 · '
+                          '当前策略：${_policyLabel(state.settings.receivePolicy)}'
                       : '接收服务未启动',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
@@ -49,24 +51,33 @@ class SettingsPage extends StatelessWidget {
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
           sliver: SliverToBoxAdapter(
-            // 横屏：分组两列排布，充分利用横向空间；竖屏：单列，与手机一致。
+            // 设计稿 02 的页面结构：左侧主区放全部分组，右侧固定 276px
+            // 放「当前生效范围 / 状态如何判定」两张说明卡；窄屏退化为
+            // 单列，说明卡挪到分组后面。
             child: isWideLayout(context)
-                ? LayoutBuilder(
-                    builder: (BuildContext context, BoxConstraints c) {
-                      final double half = (c.maxWidth - 16) / 2;
-                      return Wrap(
-                        spacing: 16,
-                        crossAxisAlignment: WrapCrossAlignment.start,
-                        children: <Widget>[
-                          for (final Widget group in _buildGroups(context, state))
-                            SizedBox(width: half, child: group),
-                        ],
-                      );
-                    },
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: _buildGroups(context, state),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      SizedBox(
+                        width: 276,
+                        child: _sideColumn(context, state),
+                      ),
+                    ],
                   )
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: _buildGroups(context, state),
+                    children: <Widget>[
+                      ..._buildGroups(context, state),
+                      const SizedBox(height: 20),
+                      _sideColumn(context, state),
+                    ],
                   ),
           ),
         ),
@@ -458,6 +469,18 @@ class SettingsPage extends StatelessWidget {
     return '${fingerprint.substring(0, 8)}…${fingerprint.substring(fingerprint.length - 4)}'.toUpperCase();
   }
 
+  /// 页头副标题里的当前策略一句话（设计稿 02 文案）。
+  static String _policyLabel(ReceivePolicy policy) {
+    switch (policy) {
+      case ReceivePolicy.ask:
+        return '每次询问';
+      case ReceivePolicy.trusted:
+        return '仅白名单设备免确认';
+      case ReceivePolicy.all:
+        return '全部自动接收';
+    }
+  }
+
   Future<void> _editAlias(BuildContext context, AppState state) async {
     final TextEditingController controller = TextEditingController(text: state.settings.alias);
     final String? value = await showDialog<String>(
@@ -813,8 +836,72 @@ class SettingsPage extends StatelessWidget {
           _warningCard(context),
           const SizedBox(height: 12),
           _guardrailCard(context, state),
+        ],
+      ),
+    );
+  }
+
+  /// 设计稿 02 的右侧栏：当前生效范围（统计）+ 状态如何判定（规则）。
+  /// 宽屏固定 276px 靠右，窄屏排在分组后面。
+  Widget _sideColumn(BuildContext context, AppState state) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        _scopeCard(context, state),
+        const SizedBox(height: 14),
+        _rulesCard(context),
+      ],
+    );
+  }
+
+  /// 「状态如何判定」：接收策略状态机的四条规则，照设计稿 02。
+  Widget _rulesCard(BuildContext context) {
+    return WispCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            '状态如何判定',
+            style: Theme.of(context)
+                .textTheme
+                .bodyLarge
+                ?.copyWith(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 10),
+          _ruleRow(context, '进设置页', '回查系统状态'),
+          _ruleRow(context, '每次切换', '回查 + 不一致回滚'),
+          _ruleRow(context, '标识来源', '联系人簿'),
+          _ruleRow(context, '匹配不认', 'IP / 别名'),
           const SizedBox(height: 12),
-          _scopeCard(context, state),
+          Text(
+            '用户在系统里手动关掉登录项或删掉联系人时，开关不会假装还是「开」。',
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(height: 1.6),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _ruleRow(BuildContext context, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+          Text(
+            value,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
         ],
       ),
     );
@@ -1040,11 +1127,8 @@ class SettingsPage extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: <Widget>[
-          Icon(
-            online ? Icons.devices_rounded : Icons.devices_other_rounded,
-            size: 20,
-            color: WispColors.secondaryText(context),
-          ),
+          // 设计稿 02：白名单行用设备类型头像（青绿系圆角块）。
+          DeviceAvatar(kind: live?.kind ?? DeviceKind.unknown, size: 34),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -1215,6 +1299,7 @@ class SettingsPage extends StatelessWidget {
   }
 
   /// 当前生效范围：免确认设备数 / 仍需同意设备数，以及完成后的通知说明。
+  /// 设计稿 02：指标竖排，数字大字在上、说明小字在下。
   Widget _scopeCard(BuildContext context, AppState state) {
     final ReceivePolicy policy = state.settings.receivePolicy;
     final List<String> trusted = state.settings.trustedFingerprints;
@@ -1248,13 +1333,9 @@ class SettingsPage extends StatelessWidget {
                 ?.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 12),
-          Row(
-            children: <Widget>[
-              Expanded(child: _metric(context, exempt, '台设备免确认接收')),
-              const SizedBox(width: 10),
-              Expanded(child: _metric(context, consent, '台设备仍需你同意')),
-            ],
-          ),
+          _metric(context, exempt, '台设备免确认接收'),
+          const SizedBox(height: 9),
+          _metric(context, consent, '台设备仍需你同意'),
           const SizedBox(height: 12),
           Text(
             '自动接收不会弹「接收 / 忽略」，但完成后仍会发一条通知，'
@@ -1262,7 +1343,7 @@ class SettingsPage extends StatelessWidget {
             style: Theme.of(context)
                 .textTheme
                 .bodySmall
-                ?.copyWith(height: 1.5),
+                ?.copyWith(height: 1.6),
           ),
         ],
       ),
@@ -1271,26 +1352,27 @@ class SettingsPage extends StatelessWidget {
 
   Widget _metric(BuildContext context, int value, String label) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: WispColors.surfaceAlt(context),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
             '$value',
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  color: WispColors.accent(context),
-                  fontWeight: FontWeight.w700,
-                ),
+            style: TextStyle(
+              fontSize: 22,
+              height: 1.2,
+              fontWeight: FontWeight.w500,
+              color: WispColors.accent(context),
+              fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+            ),
           ),
           const SizedBox(height: 2),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
+          Text(label, style: Theme.of(context).textTheme.bodySmall),
         ],
       ),
     );

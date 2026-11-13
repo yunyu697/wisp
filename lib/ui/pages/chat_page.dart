@@ -4,8 +4,10 @@ import 'package:provider/provider.dart';
 
 import '../../core/design/app_colors.dart';
 import '../../core/utils/format.dart';
+import '../../core/utils/pickers.dart';
 import '../../models/device.dart';
 import '../../models/message.dart';
+import '../../models/transfer.dart';
 import '../../state/app_state.dart';
 import '../widgets/attachment_bundle.dart';
 import '../widgets/device_tile.dart';
@@ -153,6 +155,31 @@ class _ChatPageState extends State<ChatPage> {
       _toast(error);
     } else {
       _toast('已发送剪贴板内容（${text.length} 字）');
+    }
+    _scrollToBottom();
+  }
+
+  /// composer 附件发送（设计稿 03 的「+」）：文件选择器挑文件，
+  /// 走标准文件通道直发给当前会话对端，不动待发清单。
+  /// 传输完成后统一账本会把文件追加成本会话的附件消息。
+  Future<void> _attachAndSend() async {
+    final AppState? state = _state;
+    if (state == null || _sending) return;
+    final WispDevice? device = _device(state);
+    if (device == null) {
+      _toast('对方不在线，文件发不出去');
+      return;
+    }
+    final List<TransferFile> picked = await Pickers.pickFiles();
+    if (picked.isEmpty || !mounted) return;
+    setState(() => _sending = true);
+    final String? error = await state.sendTo(device, files: picked);
+    if (!mounted) return;
+    setState(() => _sending = false);
+    if (error != null) {
+      _toast(error);
+    } else {
+      _toast('已发送 ${picked.length} 个文件');
     }
     _scrollToBottom();
   }
@@ -561,6 +588,29 @@ class _ChatPageState extends State<ChatPage> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: <Widget>[
+                  // 「+」= 附件（文件选择器，走文件通道直发）；设计稿 03 的输入区。
+                  Tooltip(
+                    message: '发送文件',
+                    child: Material(
+                      color: WispColors.surfaceAlt(context),
+                      borderRadius: BorderRadius.circular(15),
+                      child: InkWell(
+                        onTap: canSend ? _attachAndSend : null,
+                        borderRadius: BorderRadius.circular(15),
+                        child: Padding(
+                          padding: const EdgeInsets.all(11),
+                          child: Icon(
+                            Icons.add_rounded,
+                            size: 20,
+                            color: canSend
+                                ? WispColors.secondaryText(context)
+                                : WispColors.secondaryText(context).withValues(alpha: 0.5),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Tooltip(
                     message: '发送剪贴板内容',
                     child: Material(
@@ -599,7 +649,7 @@ class _ChatPageState extends State<ChatPage> {
                         onChanged: (_) => setState(() {}),
                         style: Theme.of(context).textTheme.bodyMedium,
                         decoration: InputDecoration(
-                          hintText: online ? '输入消息…' : '对方不在线',
+                          hintText: online ? '发消息、粘贴图片…' : '对方不在线',
                           isDense: true,
                           filled: true,
                           fillColor: WispColors.surfaceAlt(context),
@@ -622,7 +672,7 @@ class _ChatPageState extends State<ChatPage> {
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    '点左边图标直接发送剪贴板 · Ctrl + Enter 发送',
+                    '「+」发文件 · 剪贴板图标发文字 · Ctrl + Enter 发送',
                     style: TextStyle(
                       fontSize: 10.5,
                       color: WispColors.secondaryText(context).withValues(alpha: 0.8),
