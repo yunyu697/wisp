@@ -40,9 +40,11 @@ class _MessagesPageState extends State<MessagesPage> {
   void _consumeOpenRequest(AppState state) {
     final String? key = state.openConversationKey;
     if (key == null || _consumedOpenTick == state.openConversationTick) return;
-    _consumedOpenTick = state.openConversationTick;
     final Conversation? conversation = state.conversationOf(key);
+    // 会话还没建好（对端刚上线、联系人簿刚补）时**不要**把 tick 标记成
+    // 已消费：留到下一次 notify 再试，否则这个请求会被永久吞掉。
     if (conversation == null) return;
+    _consumedOpenTick = state.openConversationTick;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _openChat(context, state, conversation);

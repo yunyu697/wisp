@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/design/app_colors.dart';
 import '../../core/utils/format.dart';
+import '../../core/utils/open_file.dart';
 import '../../models/message.dart';
 
 /// 一条消息里的附件区：单张图片直接预览，≥2 个文件折叠成一张卡。
@@ -38,7 +39,11 @@ class AttachmentBundle extends StatelessWidget {
 
   Widget _single(BuildContext context, ChatAttachment attachment) {
     final bool image = attachment.isImage && _exists(attachment);
-    return Container(
+    // 整张卡都可点：图片进大图预览，其它文件交给系统默认应用打开。
+    // 以前只有图片有 onTap，点普通文件毫无反应（Android 上尤其明显）。
+    return GestureDetector(
+      onTap: () => _openAttachment(context, attachment),
+      child: Container(
       constraints: const BoxConstraints(maxWidth: 320),
       decoration: BoxDecoration(
         color: WispColors.surface(context),
@@ -52,7 +57,7 @@ class AttachmentBundle extends StatelessWidget {
         children: <Widget>[
           if (image)
             GestureDetector(
-              onTap: () => _preview(context, attachment),
+              onTap: () => _openAttachment(context, attachment),
               child: Image.file(
                 File(attachment.path),
                 height: 180,
@@ -88,6 +93,7 @@ class AttachmentBundle extends StatelessWidget {
             ),
           ),
         ],
+      ),
       ),
     );
   }
@@ -138,7 +144,9 @@ class AttachmentBundle extends StatelessWidget {
           else
             ...attachments.map((ChatAttachment a) => Padding(
                   padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
+                  child: GestureDetector(
+                    onTap: () => _openAttachment(context, a),
+                    child: Row(
                     children: <Widget>[
                       _thumb(context, a, size: 38),
                       const SizedBox(width: 10),
@@ -159,6 +167,7 @@ class AttachmentBundle extends StatelessWidget {
                         ),
                       ),
                     ],
+                  ),
                   ),
                 )),
           const SizedBox(height: 4),
@@ -199,7 +208,7 @@ class AttachmentBundle extends StatelessWidget {
   Widget _thumb(BuildContext context, ChatAttachment attachment, {double size = 42}) {
     final bool image = attachment.isImage && _exists(attachment);
     return GestureDetector(
-      onTap: image ? () => _preview(context, attachment) : null,
+      onTap: () => _openAttachment(context, attachment),
       child: Container(
         width: size,
         height: size,
@@ -256,6 +265,34 @@ class AttachmentBundle extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// 点附件：图片进应用内大图预览，其它文件交给系统默认应用。
+  /// 文件不在本机时也要给一句反馈——「点了没反应」是最糟的结果。
+  Future<void> _openAttachment(
+      BuildContext context, ChatAttachment attachment) async {
+    if (attachment.isImage && _exists(attachment)) {
+      _preview(context, attachment);
+      return;
+    }
+    if (!attachment.hasPath || !File(attachment.path).existsSync()) {
+      _showMessage(context, '文件已不在原来的位置，可在「文件」页重发');
+      return;
+    }
+    final OpenFileResult result = await openLocalFile(attachment.path);
+    if (!result.opened && context.mounted) {
+      _showMessage(context, result.message ?? '没能打开这个文件');
+    }
+  }
+
+  void _showMessage(BuildContext context, String message) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 4),
+      ));
   }
 
   void _preview(BuildContext context, ChatAttachment attachment) {

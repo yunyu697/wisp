@@ -255,16 +255,16 @@ class _UpdateSheetState extends State<UpdateSheet> {
       case _Phase.done:
       case _Phase.failed:
         final bool failed = _phase == _Phase.failed;
-        // 「仅下载」下完之后：文件就在用户的下载目录里，这里直接给出安装入口。
-        // 不能只丢一句"请手动安装"——Windows 的 UAC、macOS 的挂载都还是我们
-        // 能替用户做的，用户没必要自己去找那个文件。
+        // 「仅下载」下完之后：文件就在下载目录里，这里直接给出安装入口。
+        // Android 也算「能装」——虽然最终要用户确认安装页，但我们可以
+        // 直接拉起系统安装界面，不该让用户自己去下载目录翻 apk。
         final String? pending = failed ? null : _downloadedPath;
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: WispUpdateResultCard(
             failed: failed,
             message: _resultText,
-            onInstall: pending != null && WispUpdateInstaller.supportsAutoInstall
+            onInstall: pending != null && WispUpdateInstaller.supportsInstall
                 ? () => _install(pending, restart: true)
                 : null,
             onDismiss: () => setState(() {
@@ -474,12 +474,13 @@ class _UpdateSheetState extends State<UpdateSheet> {
   Future<void> _downloadOnly() async {
     final String? path = await _runDownload(verified: false, toUserDir: true);
     if (path == null || !mounted) return;
+    final String where = WispUpdateInstaller.describeArtifact(path);
     setState(() {
       _phase = _Phase.done;
       _downloadedPath = path;
-      _resultText = WispUpdateInstaller.supportsAutoInstall
-          ? '安装包已下载到 $path，可以直接点「安装」。'
-          : '安装包已下载到 $path，请手动安装。';
+      _resultText = WispUpdateInstaller.supportsInstall
+          ? '安装包已保存到 $where，可以直接点「安装」。'
+          : '安装包已保存到 $where，请手动安装。';
     });
   }
 

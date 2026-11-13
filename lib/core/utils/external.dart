@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
+import '../../services/android_platform.dart';
+
 /// 打开外链的结果。
 ///
 /// 调用方据此决定要不要提示用户——「点了没反应」是最糟的体验，
@@ -37,8 +39,8 @@ bool isOpenableWebUrl(String url) {
 /// 没有正确的交互式桌面关联，explorer.exe 收下 URL 却不打开浏览器，
 /// 表现就是「点了下载链接没反应」。
 ///
-/// macOS / Linux 用系统的 open / xdg-open；Android 没有可靠的免插件方案，
-/// 保留空实现（桌面端是主场景）。
+/// macOS / Linux 用系统的 open / xdg-open；Android 走原生 `wisp/android`
+/// 通道的 ACTION_VIEW（分区存储时代的浏览器必须由系统 Intent 唤起）。
 Future<ExternalOpenResult> openExternal(String url) async {
   if (url.trim().isEmpty) {
     return const ExternalOpenResult(
@@ -94,7 +96,16 @@ Future<ExternalOpenResult> openExternal(String url) async {
     }
   }
 
-  // Android：没有可靠的免插件方案，交给 Intent 由平台通道处理是后续工作。
+  if (Platform.isAndroid) {
+    // 更新弹层里的「手动下载」「打开下载页」过去在 Android 上是死链：
+    // 这里直接交给系统浏览器，失败也给出明确的中文提示。
+    final bool ok = await WispAndroid.openUrl(url);
+    return ok
+        ? ExternalOpenResult.ok
+        : const ExternalOpenResult(
+            opened: false, message: '没能唤起浏览器，请手动复制链接到浏览器');
+  }
+
   return const ExternalOpenResult(
       opened: false, message: '当前平台暂不支持直接打开链接，请手动复制到浏览器');
 }

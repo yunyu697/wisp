@@ -661,7 +661,17 @@ class AppState extends ChangeNotifier {
   ///
   /// `composeTick` 是给 HomeShell 的信号——它只在变化时翻页，避免把"翻页"这件事
   /// 耦合进状态机，也避免用户在别的页面时被静默吞掉。
-  Future<void> addDroppedPaths(List<String> paths) async {
+  ///
+  /// **例外：当前正打开某个会话时，拖进来的文件直接发给这台设备**。对端已经由
+  /// 会话确定，再弹一次「发给谁」纯属多余（用户实测反馈）。这条链路不进 draft、
+  /// 不动 composeTick，完全绕过发送页。
+  ///
+  /// [sendOverride] 仅用于测试注入发送实现；生产走 [sendTo]。
+  Future<void> addDroppedPaths(
+    List<String> paths, {
+    Future<String?> Function(WispDevice device, List<TransferFile> files)?
+        sendOverride,
+  }) async {
     if (paths.isEmpty) return;
     final List<TransferFile> incoming = <TransferFile>[];
     for (final String path in paths) {
@@ -670,6 +680,22 @@ class AppState extends ChangeNotifier {
     if (incoming.isEmpty) {
       banner = '拖进来的内容没有可发送的文件（快捷方式或没有读取权限）';
       notifyListeners();
+      return;
+    }
+    final WispDevice? chatDevice = deviceForActiveChat();
+    if (chatDevice != null) {
+      final Future<String?> Function(WispDevice, List<TransferFile>) send =
+          sendOverride ??
+              (WispDevice device, List<TransferFile> files) =>
+                  sendTo(device, files: files);
+      unawaited(() async {
+        final String? error = await send(chatDevice, incoming);
+        banner = error ??
+            (incoming.length == 1
+                ? '已把 1 个文件发给 ${chatDevice.alias}'
+                : '已把 ${incoming.length} 个文件发给 ${chatDevice.alias}');
+        notifyListeners();
+      }());
       return;
     }
     final int before = draft.length;
@@ -720,6 +746,16 @@ class AppState extends ChangeNotifier {
     banner = added == 1 ? '已放回 1 个文件，选一台设备发出去' : '已放回 $added 个文件，选一台设备发出去';
     notifyListeners();
     return null;
+  }
+
+  /// 当前正在看的会话对应设备；没有打开会话 / 对端离线时返回 null。
+  /// [activeChatKey] 由 ChatPage 的 enterChat / leaveChat 维护。
+  WispDevice? deviceForActiveChat() {
+    final String? key = activeChatKey;
+    if (key == null) return null;
+    final Conversation? conversation = conversationOf(key);
+    if (conversation == null) return null;
+    return deviceForConversation(conversation);
   }
 
   /// 对端还在线就返回它的 IP，让发送页直接选中；不在线返回 null（用户自己挑）。
@@ -964,6 +1000,21 @@ class AppState extends ChangeNotifier {
   Conversation openChat(WispDevice device) {
     final Conversation conversation =
         _ensureConversation(device.key, device.alias, device.ip);
+    enterChat(conversation.peerKey);
+    return conversation;
+  }
+
+  /// 联系人**不在线**时也能打开它的会话：看历史、等它上线。
+  ///
+  /// 联系人页以前要求「设备在线且没有会话」才能建会话，离线联系人点了就
+  /// 什么都不发生（连提示都没刷出来）。会话键就是联系人 id（证书指纹），
+  /// 不需要伪造一台在线设备；聊天页会自己把输入框置灰。
+  Conversation openChatForContact(Contact contact) {
+    final Conversation conversation = _ensureConversation(
+      contact.id,
+      contact.alias,
+      contact.knownIps.isEmpty ? '' : contact.knownIps.first,
+    );
     enterChat(conversation.peerKey);
     return conversation;
   }

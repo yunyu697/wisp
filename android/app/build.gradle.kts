@@ -87,3 +87,9 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // MainActivity 用 androidx FileProvider 生成 content:// URI：
+    // 分区存储下安装 APK / 用第三方应用打开附件都需要它。
+    implementation("androidx.core:core-ktx:1.13.1")
+}

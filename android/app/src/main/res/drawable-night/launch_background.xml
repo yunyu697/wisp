@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 夜间启动窗口：与 drawable/ 的浅色版对应，避免深色模式下先闪一片白。 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/ic_launcher_background_dark" />
+</layer-list>

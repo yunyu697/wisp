@@ -24,16 +24,18 @@ class WispApp extends StatelessWidget {
       // Flutter 引擎照样按 60fps 出帧，空转吃掉 25~50% CPU。这类"没人看还在画"
       // 的动画只能在根部统一掐掉——让每个页面各自判断窗口状态，新加一个动画
       // 就会漏一个，而且漏了也没人发现。
+      //
+      // 但**启动阶段不能静音**：_LaunchView 自己的淡入也依赖 ticker，
+      // 静默启动（窗口一直藏着）时它会被冻在 opacity 0，用户从托盘打开
+      // 就只看到一片白。ready 之前一律放行，就绪后再按窗口可见性收敛。
       builder: (BuildContext context, Widget? child) => TickerMode(
-        enabled: state.mainWindowVisible,
+        enabled: !state.ready || state.mainWindowVisible,
         child: child ?? const SizedBox.shrink(),
       ),
-      home: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 420),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        child: state.ready ? const HomeShell() : const _LaunchView(),
-      ),
+      // 这里刻意不用 AnimatedSwitcher：启动页 → 主界面若发生在其过渡期间
+      // 且 ticker 恰好被静音（静默启动 / 托盘恢复的时序竞态），切换会永远
+      // 卡在全透明的那一帧，整个客户区就是一片白。直接条件渲染没有中间态。
+      home: state.ready ? const HomeShell() : const _LaunchView(),
     );
   }
 }

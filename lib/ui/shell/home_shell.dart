@@ -35,6 +35,7 @@ class _HomeShellState extends State<HomeShell> {
   final PageController _pageController = PageController(initialPage: 0);
   int _index = 0;
   int _composeTick = 0;
+  int _openConversationTick = 0;
   bool _sendRouteOpen = false;
   int _unread = 0;
   AppState? _state;
@@ -109,6 +110,20 @@ class _HomeShellState extends State<HomeShell> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) setState(() {});
       });
+    }
+
+    // 联系人页点了某台设备：请求打开它的会话。会话页会消费这个请求并选中/
+    // push 聊天，但**外壳必须先把导航切回「会话」**——否则宽屏下只是后台
+    // 把会话选中了，用户眼前还停在联系人页，表现就是「点了没反应」。
+    if (state.openConversationTick != _openConversationTick) {
+      _openConversationTick = state.openConversationTick;
+      if (_index != kMessagesNavIndex) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _index != kMessagesNavIndex) {
+            _select(kMessagesNavIndex);
+          }
+        });
+      }
     }
 
     // 有内容进待发清单了（拖拽 / 历史重发）：打开发送路由页。

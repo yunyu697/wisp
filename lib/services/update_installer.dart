@@ -11,7 +11,8 @@
 ///   /Applications 无写权限时退回"给你打开 dmg 自己拖"；
 /// · Linux —— 发行版包管理器各异（deb/rpm/AppImage/tar），强上 pkexec
 ///   风险大于收益，只做"仅下载"；
-/// · Android —— 装第三方 apk 要申请"未知来源安装"权限链，只做"仅下载"。
+/// · Android —— 下载后进系统下载目录，并拉起系统安装界面（需要用户确认
+///   「安装未知应用」权限与安装页，不是静默安装）。
 library;
 
 import 'dart:async';
@@ -20,6 +21,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'android_platform.dart';
 import 'desktop_service.dart';
 import 'update_service.dart';
 
@@ -45,12 +47,16 @@ class UpdateInstallOutcome {
 class WispUpdateInstaller {
   const WispUpdateInstaller._();
 
-  /// 当前平台能否在下载后自动完成安装。
+  /// 当前平台能否在下载后自动完成安装（「一键更新」按钮）。
   static bool get supportsAutoInstall {
     if (Platform.isWindows) return true;
     if (Platform.isMacOS) return true;
     return false;
   }
+
+  /// 下好的包能不能给出「安装」按钮。Android 也算：虽然要用户确认，
+  /// 但我们可以直接拉起系统安装界面，不该让用户自己去下载目录翻 apk。
+  static bool get supportsInstall => supportsAutoInstall || Platform.isAndroid;
 
   /// 下载当前平台安装包，返回本地文件路径。
   ///
@@ -90,9 +96,9 @@ class WispUpdateInstaller {
     for (final String url in urls) {
       try {
         final String path = await _downloadOne(url, onProgress, dir);
-        if (expected == null) return path;
+        if (expected == null) return await _publishAndroid(path);
         final String actual = await sha256OfFile(path);
-        if (actual == expected) return path;
+        if (actual == expected) return await _publishAndroid(path);
         // 校验不过就删掉再换源：坏包不能留在磁盘上被用户手动点开。
         try {
           await File(path).delete();
@@ -178,6 +184,32 @@ class WispUpdateInstaller {
     }
   }
 
+  /// Android：校验过的包发布到**系统下载目录**，返回可安装的 content URI。
+  /// 分区存储下 Dart 不能直接写公共目录，这一步必须交给原生 MediaStore。
+  /// 发布失败时退回本地路径（仍在应用私有目录，可经 FileProvider 安装）。
+  static Future<String> _publishAndroid(String path) async {
+    if (!Platform.isAndroid) return path;
+    final String? published = await WispAndroid.saveToDownloads(path);
+    if (published == null) return path;
+    // 系统下载目录里已经有一份了，删掉应用目录中的源副本——安装包动辄
+    // 几十 MB，留两份纯属占用户空间。安装用的是 published 这个句柄。
+    if (published != path) {
+      try {
+        await File(path).delete();
+      } catch (_) {
+        // 删不掉也不影响安装，交给系统清理缓存。
+      }
+    }
+    return published;
+  }
+
+  /// 给用户看的结果文案里怎么称呼这个包：content URI 不该暴露成
+  /// `content://media/.../1234`，说清楚它在系统下载目录里就够了。
+  static String describeArtifact(String path) {
+    if (path.startsWith('content://')) return '系统下载目录（Download）';
+    return path;
+  }
+
   /// 从下载地址取文件名（忽略 query 与镜像前缀）。
   static String _fileNameFromUrl(String url) {
     final Uri uri = Uri.tryParse(url) ?? Uri();
@@ -226,10 +258,38 @@ class WispUpdateInstaller {
   static Future<UpdateInstallOutcome> install(String filePath) async {
     if (Platform.isWindows) return _installWindows(filePath);
     if (Platform.isMacOS) return _installMacos(filePath);
+    if (Platform.isAndroid) return _installAndroid(filePath);
     return const UpdateInstallOutcome(
       ok: false,
       message: '当前平台不支持自动安装，请手动安装下载好的安装包',
     );
+  }
+
+  /// Android：拉起系统安装界面。不是静默安装——用户要确认安装页，
+  /// Android 8+ 还要先给本应用「安装未知应用」权限（原生会代开设置页）。
+  static Future<UpdateInstallOutcome> _installAndroid(String target) async {
+    final String status = await WispAndroid.installApk(target);
+    switch (status) {
+      case 'ok':
+        return UpdateInstallOutcome(
+          ok: true,
+          message: '已打开安装界面，确认后即可升级到新版',
+          installerPath: target,
+        );
+      case 'permission_required':
+        return UpdateInstallOutcome(
+          ok: false,
+          message: '请先允许 Wisp 安装未知应用；已为你打开系统设置，'
+              '授权后回来再点「安装」即可',
+          installerPath: target,
+        );
+      default:
+        return UpdateInstallOutcome(
+          ok: false,
+          message: '没能打开安装界面，可到系统下载目录手动安装',
+          installerPath: target,
+        );
+    }
   }
 
   // ---------------------------------------------------------------------

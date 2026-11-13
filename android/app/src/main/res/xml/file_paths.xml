@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider 可授权的路径：应用私有目录、外部专属目录，以及公共 Download。
+     安装器/浏览器拿到的是 content:// URI，只在本次授权内可读。 -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <files-path name="files" path="."/>
+    <cache-path name="cache" path="."/>
+    <external-path name="external" path="."/>
+    <external-files-path name="external_files" path="."/>
+    <external-cache-path name="external_cache" path="."/>
+</paths>
