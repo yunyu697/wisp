@@ -136,17 +136,23 @@ void main() {
       addTearDown(tester.view.reset);
 
       await tester.pumpWidget(host());
-      await tester.scrollUntilVisible(
-        find.text('更新日志'),
-        300,
-        scrollable: find.byType(Scrollable).first,
-      );
-      // scrollUntilVisible 按固定步长走，内容高度一变就可能少走/多走一步，
-      // 背景差出几百像素——基准图会莫名其妙红。截图前先滚到底，位置确定。
-      await tester.drag(find.byType(Scrollable).first, const Offset(0, -4000));
+      // 先反复 drag 滚到最大偏移（滚不动为止），再 ensureVisible 找回入口行。
+      // 旧的盲拖 -4000 在设置页变长后会把行滚出屏，tap 落空，
+      // 基准图悄悄退化成设置页底部——版本号再变这张图也不红。
+      for (int i = 0; i < 40; i++) {
+        await tester.drag(find.byType(Scrollable).first, const Offset(0, -800));
+        await tester.pumpAndSettle();
+      }
+      await tester.ensureVisible(find.text('更新日志'));
+      await tester.pumpAndSettle();
+      // 把行往屏幕中间拖一点，保证 tap 能命中（贴边时命中判定会失败）。
+      await tester.drag(find.text('更新日志'), const Offset(0, 200));
       await tester.pumpAndSettle();
       await tester.tap(find.text('更新日志'));
       await tester.pumpAndSettle();
+      // 守护：弹层必须真的开了，否则基准图悄悄退化成设置页底部，
+      // 版本号再怎么变这张图也不会红（11-13 发 2.2.0 时踩过）。
+      expect(find.text('当前版本'), findsOneWidget);
 
       // 弹层是路由 overlay，不在 SettingsPage 的渲染边界里，
       // 必须截整棵 MaterialApp 才能拍到弹层。

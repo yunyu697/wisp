@@ -9,10 +9,18 @@ class WispReleaseNotes {
   const WispReleaseNotes._();
 
   /// 当前应用版本（与 pubspec.yaml 的 `version:` 保持一致）。
-  static const String currentVersion = '2.1.0';
+  static const String currentVersion = '2.2.0';
 
   /// 新版本在前，设置页按这个顺序展示。
   static const List<WispReleaseEntry> entries = <WispReleaseEntry>[
+    WispReleaseEntry(version: '2.2.0', changes: <String>[
+      '导航对齐设计稿，改为四项：会话、联系人、文件、设置；侧边导航栏照稿重做——图标加文字、选中高亮，栏底是这台设备的头像',
+      '新增「联系人」页：按保留、临时会话、已归档分组记住传过文件的设备，一眼看到谁在线，长按可以打开会话或归档',
+      '原来的「附近」页退役：新消息从会话页右上角「新消息」进入，支持手动输入 IP 直连；发送改为拖拽或重发时自动打开，不再占用导航位',
+      '「记录」改名「文件」，并保持原有按天分组的传输清单',
+      '设置页对齐设计稿：宽屏改为左侧设置分组 + 右侧「当前生效范围」统计与「状态如何判定」说明栏，白名单行换上设备头像',
+      '聊天输入区升级：「+」可以直接选文件发给当前会话的设备，与输入、剪贴板、发送并列；提示文案同步更新',
+    ]),
     WispReleaseEntry(version: '2.1.0', changes: <String>[
       '「附近」「发送」「记录」三页统一成与消息页一致的工作台风格：宽屏左右分栏，一侧是身份、概览或待发清单，另一侧是设备与记录主面板；窄窗口和手机仍是熟悉的单栏',
       '启动后默认进入「消息」页：打开应用就是聊天主场，设备、文件收发照旧从底部标签切换',
