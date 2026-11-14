@@ -1,10 +1,13 @@
 package app.wisp.wisp
 
 import android.Manifest
+import android.app.PendingIntent
 import android.content.ClipData
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.IntentSender
+import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.net.wifi.WifiManager
@@ -19,6 +22,7 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import java.io.FileOutputStream
 
 /**
  * Android 侧方法通道 `wisp/android`：
@@ -32,6 +36,17 @@ class MainActivity : FlutterActivity() {
 
     /** 最近一次成功发布到系统下载目录时用的源副本；安装时的兜底路径。 */
     private var lastPublishedPath: String? = null
+
+    private companion object {
+        /** APK 的 MIME；ACTION_VIEW 靠它路由到系统安装器。 */
+        const val APK_MIME = "application/vnd.android.package-archive"
+
+        /** 安装暂存用的固定文件名（落在 cache/install/ 下）。 */
+        const val STAGED_APK = "wisp-update.apk"
+
+        /** 写进 PackageInstaller 会话里的条目名，随便取，不落文件系统。 */
+        const val SESSION_APK = "wisp.apk"
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -63,7 +78,7 @@ class MainActivity : FlutterActivity() {
                     }
                     "openUrl" -> result.success(openUrl(call.argument<String>("url")))
                     "saveToDownloads" -> result.success(saveToDownloads(call.argument<String>("path")))
-                    "installApk" -> result.success(installApk(call.argument<String>("target")))
+                    "installApk" -> installApkAsync(call.argument<String>("target"), result)
                     "openFile" -> result.success(openFile(call.argument<String>("path")))
                     else -> result.notImplemented()
                 }
@@ -113,8 +128,13 @@ class MainActivity : FlutterActivity() {
                 values.put(MediaStore.Downloads.IS_PENDING, 0)
                 contentResolver.update(uri, values, null, null)
                 // 部分 ROM 在 IS_PENDING 1→0 时会把内容丢掉，系统下载目录
-                // 里留下一个 0 字节 apk，用户点开就报 "packageInfo is null"。
-                // 清完标记再读开头 4 字节确认还是合法 ZIP，不合法就撤回发布。
+                // 里留下一个 0 字节或半截的 apk，用户点开就报
+                // "packageInfo is null"。清完标记后不能只看开头 4 字节——
+                // 截断包的头一样是 PK\x03\x04——必须比对实际长度。
+                val size = contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: -1L
+                if (size != src.length()) {
+                    throw IllegalStateException("MediaStore size mismatch: $size != ${src.length()}")
+                }
                 val head = ByteArray(4)
                 val read = contentResolver.openInputStream(uri)?.use { it.read(head) } ?: -1
                 if (read < 4 || head[0] != 0x50.toByte() || head[1] != 0x4B.toByte()) {
@@ -183,98 +203,262 @@ class MainActivity : FlutterActivity() {
     }
 
     /**
-     * 拉起系统安装界面：'ok' / 'permission_required' / 'invalid_apk' / 'failed'。
+     * 拉起系统安装：'ok' / 'permission_required' / 'invalid_apk' / 'failed'。
      *
-     * 交给安装器的必须是**本应用自己能授权的 URI**。MediaStore 的 content://
-     * 归系统 MediaProvider，本应用发出的 FLAG_GRANT_READ_URI_PERMISSION 对它
-     * 不生效；安装器 StagingAsyncTask 复制出空包时就会报 "packageInfo is null"
-     * （AOSP 里 PackageUtil.getPackageInfo 返回 null）。所以这里统一转成
-     * FileProvider 授权的本地文件，并在启动前校验 ZIP 魔数。
+     * 2.2.3 改用 [PackageInstaller] 会话把 APK 字节**直接写进系统安装会话**，
+     * 不再让安装器来读我们授权的 URI：
+     * · 2.2.1 把 MediaStore 的 content:// 交出去，安装器读不到字节；
+     * · 2.2.2 换成 FileProvider 了，可部分 ROM 的安装器会把 URI 转交给另一个
+     *   进程（系统 PackageInstaller 服务），FLAG_GRANT_READ_URI_PERMISSION
+     *   不跟着跨进程传递，那边读到的仍是空包，于是照样报
+     *   "packageInfo is null"。
+     * 会话模式下字节已经落在系统手里，不存在"读不到"这种失败。
+     *
+     * 写几十 MB 不能占着平台线程，所以整条流程丢后台线程，结果再回主线程。
      */
-    private fun installApk(target: String?): String {
-        if (target.isNullOrBlank()) return "failed"
+    private fun installApkAsync(target: String?, result: MethodChannel.Result) {
+        if (target.isNullOrBlank()) {
+            result.success("failed")
+            return
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             !packageManager.canRequestPackageInstalls()
         ) {
+            openUnknownSourcesSettings()
+            result.success("permission_required")
+            return
+        }
+        Thread {
+            val status = try {
+                installApk(target)
+            } catch (e: Exception) {
+                "failed"
+            }
+            runOnUiThread { result.success(status) }
+        }.start()
+    }
+
+    /**
+     * 安装主流程（后台线程）：解析出可用 APK → 优先走系统安装会话，
+     * 会话建不起来（个别 ROM 禁掉普通应用的 session）才退回 URI 方式。
+     */
+    private fun installApk(target: String): String {
+        val apk = resolveInstallableApk(target) ?: return "invalid_apk"
+        installViaSession(apk)?.let { return it }
+        return installViaUri(apk)
+    }
+
+    /**
+     * 把 APK 字节写进 [PackageInstaller] 会话并提交。
+     *
+     * 返回 null 表示这台机器上建不了会话，交给调用方退回 URI 方式。
+     */
+    private fun installViaSession(apk: File): String? {
+        var sessionId = -1
+        return try {
+            val installer = packageManager.packageInstaller
+            val params = PackageInstaller.SessionParams(
+                PackageInstaller.SessionParams.MODE_FULL_INSTALL
+            ).apply {
+                setAppPackageName(packageName)
+            }
+            sessionId = installer.createSession(params)
+            installer.openSession(sessionId).use { session ->
+                session.openWrite(SESSION_APK, 0, apk.length()).use { out ->
+                    apk.inputStream().use { input -> input.copyTo(out) }
+                    session.fsync(out)
+                }
+                session.commit(installResultSender(sessionId))
+            }
+            "ok"
+        } catch (e: Exception) {
             try {
-                val settings = Intent(
-                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                    Uri.parse("package:$packageName")
-                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                startActivity(settings)
+                if (sessionId >= 0) packageManager.packageInstaller.abandonSession(sessionId)
             } catch (_: Exception) {
             }
-            return "permission_required"
+            null
         }
-        val apk = resolveInstallableApk(target) ?: return "invalid_apk"
+    }
+
+    /** 会话结果回调用的 PendingIntent（Android 12+ 必须显式声明可变性）。 */
+    private fun installResultSender(sessionId: Int): IntentSender {
+        val intent = Intent(this, InstallResultReceiver::class.java)
+            .putExtra(InstallResultReceiver.EXTRA_SESSION_ID, sessionId)
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PendingIntent.FLAG_MUTABLE
+            } else {
+                0
+            }
+        return PendingIntent.getBroadcast(this, sessionId, intent, flags).intentSender
+    }
+
+    /** 兜底：把本地文件经 FileProvider 授权给安装器自己读。 */
+    private fun installViaUri(apk: File): String {
         val uri = try {
             FileProvider.getUriForFile(this, "$packageName.fileprovider", apk)
         } catch (e: Exception) {
-            return "failed"
+            return "invalid_apk"
         }
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "application/vnd.android.package-archive")
-            // 部分 ROM 只从 ClipData 继承 URI 授权，不认 Intent 上的 flag。
-            clipData = ClipData.newUri(contentResolver, "wisp-update.apk", uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-            putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
-        }
-        // 双保险：对解析到的安装器显式授权，避免跨进程时 grant 丢失。
+        if (!uriReadsWholeFile(uri, apk.length())) return "invalid_apk"
+        return startInstaller(uri)
+    }
+
+    /** 代开「安装未知应用」授权页；拿不到系统页也不阻断，返回值已说明。 */
+    private fun openUnknownSourcesSettings() {
         try {
-            val handler = packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
-            if (!handler.isNullOrBlank()) {
-                grantUriPermission(handler, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
+            startActivity(
+                Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:$packageName")
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
         } catch (_: Exception) {
         }
+    }
+
+    /**
+     * 交 URI 给安装器。优先 ACTION_VIEW + APK MIME（现代安装器都认），
+     * 少数 ROM 只注册了旧的 ACTION_INSTALL_PACKAGE 再退一步。
+     */
+    private fun startInstaller(uri: Uri): String {
+        val view = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, APK_MIME)
+            // 部分 ROM 只从 ClipData 继承 URI 授权，不认 Intent 上的 flag。
+            clipData = ClipData.newUri(contentResolver, STAGED_APK, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val handler = try {
+            packageManager.resolveActivity(view, PackageManager.MATCH_DEFAULT_ONLY)
+        } catch (e: Exception) {
+            null
+        }
+        if (handler != null) {
+            // 跨进程时 grant 可能被 ROM 吞掉，对解析到的安装器显式再授一次。
+            val handlerPkg = handler.activityInfo?.packageName
+            if (!handlerPkg.isNullOrBlank()) {
+                try {
+                    grantUriPermission(
+                        handlerPkg,
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                } catch (_: Exception) {
+                }
+            }
+            try {
+                startActivity(view)
+                return "ok"
+            } catch (_: Exception) {
+            }
+        }
+        val legacy = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+            data = uri
+            clipData = ClipData.newUri(contentResolver, STAGED_APK, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
         return try {
-            startActivity(intent)
+            startActivity(legacy)
             "ok"
         } catch (e: Exception) {
             "failed"
         }
     }
 
-    /** 把安装句柄统一落成本应用可读、可被 FileProvider 授权的本地 APK。 */
-    private fun resolveInstallableApk(target: String): File? {
-        if (target.startsWith("content://")) {
-            // 只有本次发布成功才拿得到 content://；这时 lastPublishedPath
-            // 是同一份、下载时已校验过 sha256 的源副本，比 MediaStore 回读
-            // 更可信（部分 ROM 回读会拿到半截包）。优先用它，也省掉一遍
-            // 几十 MB 的复制。
-            lastPublishedPath?.let { path ->
-                val src = File(path)
-                if (isUsableApk(src)) return src
-            }
-            return stageContentUri(target)?.takeIf { isUsableApk(it) }
+    /** 授权出去的 URI 必须能读出和文件一模一样的长度，短了就是空包/半截包。 */
+    private fun uriReadsWholeFile(uri: Uri, expected: Long): Boolean {
+        if (expected <= 0L) return false
+        return try {
+            contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize == expected } ?: false
+        } catch (e: Exception) {
+            false
         }
-        val direct = File(target)
-        if (isUsableApk(direct)) return direct
-        return lastPublishedPath?.let { File(it) }?.takeIf { isUsableApk(it) }
     }
 
-    /** 把系统下载目录里的 content:// 复制回应用 cache（cache-path 已授权）。 */
-    private fun stageContentUri(target: String): File? {
-        val staged = File(File(cacheDir, "install").apply { mkdirs() }, "wisp-update.apk")
+    /**
+     * 把安装句柄统一落成一份**本应用亲手写过、亲手校验过**的本地 APK。
+     *
+     * 候选顺序：上游给的本地路径 → 下载时发布用的源副本 → 系统下载目录
+     * 回读 → 上一次的安装暂存。逐个用 [parsesAsWispApk] 验，第一个通过的
+     * 复制进 cache/install 并 fsync 后交出去；一个都验不过就返回 null，
+     * 由调用方给出「重新下载」——绝不让安装器去撞解析失败。
+     */
+    private fun resolveInstallableApk(target: String): File? {
+        val candidates = ArrayList<File>()
+        if (!target.startsWith("content://")) candidates.add(File(target))
+        lastPublishedPath?.let { candidates.add(File(it)) }
+        if (target.startsWith("content://")) stageContentUri(target)?.let { candidates.add(it) }
+        candidates.add(File(installStagingDir(), STAGED_APK))
+
+        for (candidate in candidates) {
+            if (!parsesAsWispApk(candidate)) continue
+            return stageForInstall(candidate) ?: candidate
+        }
+        return null
+    }
+
+    /**
+     * 用系统自己的 PackageManager 解析一遍，解析不出来就是坏包。
+     *
+     * 这一步是整个修复的关键：AOSP 的 PackageInstallerActivity 内部也调
+     * PackageUtil.getPackageInfo，返回 null 时用户只会看到一句
+     * "packageInfo is null"，没有任何可照做的信息。在这里先解析，
+     * 失败就换成中文提示"重新下载"。
+     */
+    private fun parsesAsWispApk(file: File): Boolean {
+        if (!file.isFile || file.length() <= 0L) return false
         return try {
-            val written = contentResolver.openInputStream(Uri.parse(target))?.use { input ->
-                staged.outputStream().use { sink -> input.copyTo(sink) }
-            } ?: 0L
-            if (written > 0L) staged else null
+            val head = ByteArray(4)
+            val read = file.inputStream().use { it.read(head) }
+            if (read < 4 || head[0] != 0x50.toByte() || head[1] != 0x4B.toByte()) return false
+            // 只认本应用自己的包：拿别的 apk 来装等于覆盖用户装的东西。
+            packageManager.getPackageArchiveInfo(file.absolutePath, 0)?.packageName == packageName
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /** 复制进 cache/install 并 fsync：交出去的文件必须已经完整落盘。 */
+    private fun stageForInstall(src: File): File? {
+        val dest = File(installStagingDir(), STAGED_APK)
+        return try {
+            if (src.canonicalPath == dest.canonicalPath) {
+                return if (dest.length() > 0L) dest else null
+            }
+            FileOutputStream(dest).use { out ->
+                src.inputStream().use { input -> input.copyTo(out) }
+                out.flush()
+                out.fd.sync()
+            }
+            if (dest.length() > 0L && dest.length() == src.length()) dest else null
         } catch (e: Exception) {
             null
         }
     }
 
-    /** 空文件 / 半截包在这里就拦住，别把烂包丢给系统安装器。 */
-    private fun isUsableApk(file: File): Boolean {
-        if (!file.exists() || file.length() <= 0L) return false
+    private fun installStagingDir(): File = File(cacheDir, "install").apply { mkdirs() }
+
+    /** 把系统下载目录里的 content:// 复制回应用 cache（cache-path 已授权）。 */
+    private fun stageContentUri(target: String): File? {
+        val staged = File(installStagingDir(), STAGED_APK)
+        // 先删掉上一次的暂存：写失败时不能把旧包当成这一次的结果。
+        try {
+            staged.delete()
+        } catch (_: Exception) {
+        }
         return try {
-            val head = ByteArray(4)
-            val read = file.inputStream().use { it.read(head) }
-            read >= 4 && head[0] == 0x50.toByte() && head[1] == 0x4B.toByte()
+            val written = contentResolver.openInputStream(Uri.parse(target))?.use { input ->
+                var total = 0L
+                FileOutputStream(staged).use { sink ->
+                    total = input.copyTo(sink)
+                    sink.flush()
+                    sink.fd.sync()
+                }
+                total
+            } ?: 0L
+            if (written > 0L && staged.length() == written) staged else null
         } catch (e: Exception) {
-            false
+            null
         }
     }
 

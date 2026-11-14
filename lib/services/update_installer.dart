@@ -184,24 +184,26 @@ class WispUpdateInstaller {
     }
   }
 
-  /// Android：校验过的包发布到**系统下载目录**，返回可安装的 content URI。
-  /// 分区存储下 Dart 不能直接写公共目录，这一步必须交给原生 MediaStore。
-  /// 发布失败时退回本地路径（仍在应用私有目录，可经 FileProvider 安装）。
+  /// Android：把校验过的包再复制一份到**系统下载目录**（用户能在「下载」
+  /// 里看到、也能手动点开装），但返回给调用方的**永远是本地绝对路径**。
+  ///
+  /// 展示位置与安装句柄必须分开：2.2.1/2.2.2 把 MediaStore 的 content://
+  /// 当安装句柄传下去，安装器读到的字节不完整/读不到，系统就报
+  /// "packageInfo is null"（AOSP 里 PackageUtil.getPackageInfo 返回 null）。
+  /// 现在原生只认真实文件，自己复制进 cache 并 fsync，再用系统解析器验一遍。
   static Future<String> _publishAndroid(String path) async {
     if (!Platform.isAndroid) return path;
-    final String? published = await WispAndroid.saveToDownloads(path);
-    if (published == null) return path;
-    // 源副本**必须留着**：系统下载目录给的是 MediaStore 的 content://，
-    // 安装器不一定有权限读（2.2.1 的 "packageInfo is null" 就栽在这）。
-    // 原生安装时会先把 content:// 读回应用 cache，读不到就用这份源副本
-    // 兜底。它本来就在应用 cache（Directory.systemTemp）里，系统会自动
-    // 回收，不会像用户目录那样长期占空间。
-    return published;
+    // 只是让用户在系统「下载」里也能看到；失败不影响安装，本地这份才是
+    // 安装用的。
+    await WispAndroid.saveToDownloads(path);
+    return path;
   }
 
   /// 给用户看的结果文案里怎么称呼这个包：content URI 不该暴露成
-  /// `content://media/.../1234`，说清楚它在系统下载目录里就够了。
+  /// `content://media/.../1234`，Android 上的内部路径也不该——说清楚
+  /// "在下载目录里"就够了。
   static String describeArtifact(String path) {
+    if (Platform.isAndroid) return '系统下载目录（Download）';
     if (path.startsWith('content://')) return '系统下载目录（Download）';
     return path;
   }
@@ -269,7 +271,10 @@ class WispUpdateInstaller {
       case 'ok':
         return UpdateInstallOutcome(
           ok: true,
-          message: '已打开安装界面，确认后即可升级到新版',
+          // 走系统安装会话时，个别 ROM 不直接弹安装页而是发通知，所以
+          // 把「去哪找」也写清楚，避免用户以为点了没反应。
+          message: '已提交系统安装，确认后即可升级到新版；'
+              '若没弹出安装页，去通知栏或系统「下载」目录点一下安装包',
           installerPath: target,
         );
       case 'permission_required':
@@ -280,11 +285,13 @@ class WispUpdateInstaller {
           installerPath: target,
         );
       case 'invalid_apk':
-        // 系统安装器拿到读不到/半截的 APK 时会报 "packageInfo is null"，
-        // 现在原生层提前拦住，这里给一句能照做的提示而不是甩系统错误。
+        // 原生层用系统自己的 PackageManager 解析过：连它都解不出来的包，
+        // 安装器一定解不出来，只会甩一句 "packageInfo is null"。
+        // 这里提前拦下，换成能照做的中文提示。
         return UpdateInstallOutcome(
           ok: false,
-          message: '安装包不完整或已损坏，请重新下载后再安装',
+          message: '安装包校验没通过（下载不完整或文件已损坏），'
+              '请重新点「一键更新」再下一次',
           installerPath: target,
         );
       default:

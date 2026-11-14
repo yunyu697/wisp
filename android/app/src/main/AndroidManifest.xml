@@ -50,6 +50,11 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+        <!-- 安装会话的结果回调（PackageInstaller.commit 必须给 IntentSender）。
+             exported=false：只有本应用发起、由系统代投的 PendingIntent 能触达。 -->
+        <receiver
+            android:name=".InstallResultReceiver"
+            android:exported="false" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

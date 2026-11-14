@@ -37,7 +37,8 @@ class WispAndroid {
   /// 把已下好的文件发布到**系统下载目录**（Download/）。
   ///
   /// Android 10+ 的分区存储不允许直接往公共目录写文件，必须由原生层走
-  /// MediaStore.Downloads；返回的 `content://` URI 同时就是安装用的句柄。
+  /// MediaStore.Downloads。返回的 `content://` **只用于确认发布成功**，
+  /// 不要拿它当安装句柄——安装一律用本地文件（见 [installApk]）。
   /// 失败返回 null，调用方保留原来的本地路径。
   static Future<String?> saveToDownloads(String filePath) async {
     if (!isAndroid) return null;
@@ -55,9 +56,11 @@ class WispAndroid {
 
   /// 拉起系统安装界面。
   /// 返回 `'ok'` / `'permission_required'`（已代开设置页）/
-  /// `'invalid_apk'`（包不完整或读不到，需重新下载）/ `'failed'`。
-  /// 原生层会把 MediaStore 的 content:// 转成本应用 FileProvider 授权的
-  /// 本地文件，避免安装器解析出空包（"packageInfo is null"）。
+  /// `'invalid_apk'`（包解析不出来，需重新下载）/ `'failed'`。
+  ///
+  /// [uriOrPath] 应当是本机真实文件路径；content:// 仍兼容，但原生会先把它
+  /// 复制进 cache 再校验。安装前原生会用系统解析器（getPackageArchiveInfo）
+  /// 验一遍，坏包不会交给安装器，避免用户看到 "packageInfo is null"。
   static Future<String> installApk(String uriOrPath) async {
     if (!isAndroid) return 'failed';
     try {
