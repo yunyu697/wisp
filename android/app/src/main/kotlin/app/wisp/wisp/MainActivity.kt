@@ -1,6 +1,7 @@
 package app.wisp.wisp
 
 import android.Manifest
+import android.content.ClipData
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -28,6 +29,9 @@ import java.io.File
  */
 class MainActivity : FlutterActivity() {
     private var multicastLock: WifiManager.MulticastLock? = null
+
+    /** 最近一次成功发布到系统下载目录时用的源副本；安装时的兜底路径。 */
+    private var lastPublishedPath: String? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -81,8 +85,8 @@ class MainActivity : FlutterActivity() {
 
     /**
      * 把文件复制进公共 Download 目录。
-     * Android 10+ 用 MediaStore.Downloads（返回的 content:// 同时用于安装），
-     * Android 9 及以下直接写公共目录（权限限定 maxSdk=28）。
+     * Android 10+ 用 MediaStore.Downloads，Android 9 及以下直接写公共目录
+     * （权限限定 maxSdk=28）。发布后会做完整性自检，坏包不留给用户。
      */
     private fun saveToDownloads(path: String?): String? {
         if (path.isNullOrBlank()) return null
@@ -98,13 +102,25 @@ class MainActivity : FlutterActivity() {
             val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                 ?: return null
             return try {
-                val out = contentResolver.openOutputStream(uri)
-                    ?: throw IllegalStateException("openOutputStream returned null")
-                out.use { sink -> src.inputStream().use { input -> input.copyTo(sink) } }
+                // copyTo 返回实际写入字节数，写完先和源文件对一次账。
+                val written = contentResolver.openOutputStream(uri)?.use { sink ->
+                    src.inputStream().use { input -> input.copyTo(sink) }
+                } ?: 0L
+                if (written <= 0L || written != src.length()) {
+                    throw IllegalStateException("MediaStore write incomplete")
+                }
                 values.clear()
                 values.put(MediaStore.Downloads.IS_PENDING, 0)
                 contentResolver.update(uri, values, null, null)
-                uri.toString()
+                // 部分 ROM 在 IS_PENDING 1→0 时会把内容丢掉，系统下载目录
+                // 里留下一个 0 字节 apk，用户点开就报 "packageInfo is null"。
+                // 清完标记再读开头 4 字节确认还是合法 ZIP，不合法就撤回发布。
+                val head = ByteArray(4)
+                val read = contentResolver.openInputStream(uri)?.use { it.read(head) } ?: -1
+                if (read < 4 || head[0] != 0x50.toByte() || head[1] != 0x4B.toByte()) {
+                    throw IllegalStateException("MediaStore content is not a valid APK")
+                }
+                rememberPublished(src, uri.toString())
             } catch (e: Exception) {
                 try {
                     contentResolver.delete(uri, null, null)
@@ -129,9 +145,15 @@ class MainActivity : FlutterActivity() {
                 )
             } catch (_: Exception) {
             }
-            return copyToAppDownloads(src)
+            return rememberPublished(src, copyToAppDownloads(src))
         }
-        return copyToPublicDownloads(src) ?: copyToAppDownloads(src)
+        return rememberPublished(src, copyToPublicDownloads(src) ?: copyToAppDownloads(src))
+    }
+
+    /** 发布成功后记下源副本，安装时作为 content:// 读不到时的兜底。 */
+    private fun rememberPublished(src: File, published: String?): String? {
+        if (published != null) lastPublishedPath = src.absolutePath
+        return published
     }
 
     private fun copyToPublicDownloads(src: File): String? {
@@ -160,7 +182,15 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    /** 拉起系统安装界面：'ok' / 'permission_required' / 'failed'。 */
+    /**
+     * 拉起系统安装界面：'ok' / 'permission_required' / 'invalid_apk' / 'failed'。
+     *
+     * 交给安装器的必须是**本应用自己能授权的 URI**。MediaStore 的 content://
+     * 归系统 MediaProvider，本应用发出的 FLAG_GRANT_READ_URI_PERMISSION 对它
+     * 不生效；安装器 StagingAsyncTask 复制出空包时就会报 "packageInfo is null"
+     * （AOSP 里 PackageUtil.getPackageInfo 返回 null）。所以这里统一转成
+     * FileProvider 授权的本地文件，并在启动前校验 ZIP 魔数。
+     */
     private fun installApk(target: String?): String {
         if (target.isNullOrBlank()) return "failed"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
@@ -176,24 +206,75 @@ class MainActivity : FlutterActivity() {
             }
             return "permission_required"
         }
-        val uri = if (target.startsWith("content://")) {
-            Uri.parse(target)
-        } else {
-            try {
-                FileProvider.getUriForFile(this, "$packageName.fileprovider", File(target))
-            } catch (e: Exception) {
-                return "failed"
-            }
+        val apk = resolveInstallableApk(target) ?: return "invalid_apk"
+        val uri = try {
+            FileProvider.getUriForFile(this, "$packageName.fileprovider", apk)
+        } catch (e: Exception) {
+            return "failed"
         }
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
+            // 部分 ROM 只从 ClipData 继承 URI 授权，不认 Intent 上的 flag。
+            clipData = ClipData.newUri(contentResolver, "wisp-update.apk", uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+        }
+        // 双保险：对解析到的安装器显式授权，避免跨进程时 grant 丢失。
+        try {
+            val handler = packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
+            if (!handler.isNullOrBlank()) {
+                grantUriPermission(handler, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        } catch (_: Exception) {
         }
         return try {
             startActivity(intent)
             "ok"
         } catch (e: Exception) {
             "failed"
+        }
+    }
+
+    /** 把安装句柄统一落成本应用可读、可被 FileProvider 授权的本地 APK。 */
+    private fun resolveInstallableApk(target: String): File? {
+        if (target.startsWith("content://")) {
+            // 只有本次发布成功才拿得到 content://；这时 lastPublishedPath
+            // 是同一份、下载时已校验过 sha256 的源副本，比 MediaStore 回读
+            // 更可信（部分 ROM 回读会拿到半截包）。优先用它，也省掉一遍
+            // 几十 MB 的复制。
+            lastPublishedPath?.let { path ->
+                val src = File(path)
+                if (isUsableApk(src)) return src
+            }
+            return stageContentUri(target)?.takeIf { isUsableApk(it) }
+        }
+        val direct = File(target)
+        if (isUsableApk(direct)) return direct
+        return lastPublishedPath?.let { File(it) }?.takeIf { isUsableApk(it) }
+    }
+
+    /** 把系统下载目录里的 content:// 复制回应用 cache（cache-path 已授权）。 */
+    private fun stageContentUri(target: String): File? {
+        val staged = File(File(cacheDir, "install").apply { mkdirs() }, "wisp-update.apk")
+        return try {
+            val written = contentResolver.openInputStream(Uri.parse(target))?.use { input ->
+                staged.outputStream().use { sink -> input.copyTo(sink) }
+            } ?: 0L
+            if (written > 0L) staged else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** 空文件 / 半截包在这里就拦住，别把烂包丢给系统安装器。 */
+    private fun isUsableApk(file: File): Boolean {
+        if (!file.exists() || file.length() <= 0L) return false
+        return try {
+            val head = ByteArray(4)
+            val read = file.inputStream().use { it.read(head) }
+            read >= 4 && head[0] == 0x50.toByte() && head[1] == 0x4B.toByte()
+        } catch (e: Exception) {
+            false
         }
     }
 

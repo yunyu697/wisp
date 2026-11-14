@@ -28,7 +28,7 @@ class MessagesPage extends StatefulWidget {
 }
 
 class _MessagesPageState extends State<MessagesPage> {
-  /// 三栏主场里当前选中的会话。null = 中栏显示空态。
+  /// 分栏主场里当前选中的会话。null = 中栏显示空态。
   /// 每次重新选中都用 ValueKey 重建 ChatPage，回到默认折叠。
   String? _selectedKey;
   String _query = '';
@@ -55,8 +55,9 @@ class _MessagesPageState extends State<MessagesPage> {
   Widget build(BuildContext context) {
     final AppState state = context.watch<AppState>();
     _consumeOpenRequest(state);
-    // 真正的宽桌面窗口才铺三栏；窄窗口 / 移动端继续单栏 + push 会话页。
-    if (isThreeColumnLayout(context)) return _threeColumn(context, state);
+    // 桌面 / 横屏够宽：会话列表常驻，点会话只换右侧（微信式操作逻辑）。
+    // 竖屏与窄窗口才走单栏列表 + push 全屏聊天页（设计稿 04）。
+    if (isConversationSplitLayout(context)) return _splitView(context, state);
     final List<Conversation> conversations = state.conversations;
 
     return CustomScrollView(
@@ -137,7 +138,10 @@ class _MessagesPageState extends State<MessagesPage> {
     );
   }
 
-  Widget _threeColumn(BuildContext context, AppState state) {
+  /// 分栏主场：左「会话列表」常驻 + 中「消息流」；够宽时右侧再挂身份卡栏。
+  /// 点会话只改 [_selectedKey]，绝不 push 全屏路由——否则侧边导航和会话
+  /// 列表会一起消失，就不是聊天软件的操作逻辑了。
+  Widget _splitView(BuildContext context, AppState state) {
     final String query = _query.trim().toLowerCase();
     final List<Conversation> all = state.conversations
         .where((Conversation c) =>
@@ -165,7 +169,7 @@ class _MessagesPageState extends State<MessagesPage> {
     return Row(
       // 右栏是 SingleChildScrollView，默认只按内容高度撑开，Row 会把这根
       // 短柱子垂直居中，导致身份卡底色上下各露一大截空白。整行拉伸后
-      // 三栏都吃到同样的高度，左栏的 Expanded 列表也照样有界。
+      // 各栏都吃到同样的高度，左栏的 Expanded 列表也照样有界。
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         SizedBox(
@@ -272,7 +276,9 @@ class _MessagesPageState extends State<MessagesPage> {
           ),
         ),
         Expanded(child: _thread(context, state)),
-        if (_selectedKey != null)
+        // 身份卡栏只在真正的宽桌面窗口常驻；中等窗口先保证「列表 + 聊天」
+        // 两栏够用，跟微信窄窗口收起详情面板是一个道理。
+        if (_selectedKey != null && isThreeColumnLayout(context))
           SizedBox(
             width: 268,
             child: Container(
@@ -371,7 +377,9 @@ class _MessagesPageState extends State<MessagesPage> {
             fingerprint: conversation.peerKey,
           ),
     );
-    if (isThreeColumnLayout(context)) {
+    // 分栏主场：只换右侧聊天区，会话列表与侧边导航保持原位。
+    // 手机 / 窄窗口才 push 全屏聊天页，靠顶部返回键回列表。
+    if (isConversationSplitLayout(context)) {
       setState(() => _selectedKey = conversation.peerKey);
       return;
     }
@@ -394,7 +402,7 @@ class _MessagesPageState extends State<MessagesPage> {
     );
     if (picked == null || !context.mounted) return;
     current.openChat(picked);
-    if (isThreeColumnLayout(context)) {
+    if (isConversationSplitLayout(context)) {
       setState(() => _selectedKey = picked.key);
       return;
     }

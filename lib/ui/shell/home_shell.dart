@@ -197,9 +197,10 @@ class _HomeShellState extends State<HomeShell> {
     }
 
     // 横屏 / 宽窗口：侧边导航 + 内容区。
-    // 一般页面限宽居中（kMaxContentWidth）避免被拉伸；但会话页在真正的宽
-    // 桌面窗口上要铺满，才放得下「会话栏 / 消息流 / 身份卡」三栏。
-    final bool fullBleed = _index == 0 && isThreeColumnLayout(context);
+    // 一般页面限宽居中（kMaxContentWidth）避免被拉伸；但会话页一旦进入
+    // 分栏主场就要铺满，才放得下「会话栏 / 消息流（/ 身份卡）」。
+    // 只认三栏会让 900~1100 的窗口被限宽居中，两栏挤在 980 里留白。
+    final bool fullBleed = _index == 0 && isConversationSplitLayout(context);
     return Scaffold(
       body: Row(
         children: <Widget>[

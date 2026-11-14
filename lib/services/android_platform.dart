@@ -54,7 +54,10 @@ class WispAndroid {
   }
 
   /// 拉起系统安装界面。
-  /// 返回 `'ok'` / `'permission_required'`（已代开设置页）/ `'failed'`。
+  /// 返回 `'ok'` / `'permission_required'`（已代开设置页）/
+  /// `'invalid_apk'`（包不完整或读不到，需重新下载）/ `'failed'`。
+  /// 原生层会把 MediaStore 的 content:// 转成本应用 FileProvider 授权的
+  /// 本地文件，避免安装器解析出空包（"packageInfo is null"）。
   static Future<String> installApk(String uriOrPath) async {
     if (!isAndroid) return 'failed';
     try {

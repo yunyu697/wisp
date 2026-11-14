@@ -191,15 +191,11 @@ class WispUpdateInstaller {
     if (!Platform.isAndroid) return path;
     final String? published = await WispAndroid.saveToDownloads(path);
     if (published == null) return path;
-    // 系统下载目录里已经有一份了，删掉应用目录中的源副本——安装包动辄
-    // 几十 MB，留两份纯属占用户空间。安装用的是 published 这个句柄。
-    if (published != path) {
-      try {
-        await File(path).delete();
-      } catch (_) {
-        // 删不掉也不影响安装，交给系统清理缓存。
-      }
-    }
+    // 源副本**必须留着**：系统下载目录给的是 MediaStore 的 content://，
+    // 安装器不一定有权限读（2.2.1 的 "packageInfo is null" 就栽在这）。
+    // 原生安装时会先把 content:// 读回应用 cache，读不到就用这份源副本
+    // 兜底。它本来就在应用 cache（Directory.systemTemp）里，系统会自动
+    // 回收，不会像用户目录那样长期占空间。
     return published;
   }
 
@@ -281,6 +277,14 @@ class WispUpdateInstaller {
           ok: false,
           message: '请先允许 Wisp 安装未知应用；已为你打开系统设置，'
               '授权后回来再点「安装」即可',
+          installerPath: target,
+        );
+      case 'invalid_apk':
+        // 系统安装器拿到读不到/半截的 APK 时会报 "packageInfo is null"，
+        // 现在原生层提前拦住，这里给一句能照做的提示而不是甩系统错误。
+        return UpdateInstallOutcome(
+          ok: false,
+          message: '安装包不完整或已损坏，请重新下载后再安装',
           installerPath: target,
         );
       default:
