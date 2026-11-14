@@ -9,10 +9,16 @@ class WispReleaseNotes {
   const WispReleaseNotes._();
 
   /// 当前应用版本（与 pubspec.yaml 的 `version:` 保持一致）。
-  static const String currentVersion = '2.2.1';
+  static const String currentVersion = '2.2.2';
 
   /// 新版本在前，设置页按这个顺序展示。
   static const List<WispReleaseEntry> entries = <WispReleaseEntry>[
+    WispReleaseEntry(version: '2.2.2', changes: <String>[
+      '进入会话后左侧导航和会话列表不再消失：桌面和横屏窗口里会话列表常驻，点会话只换右边的内容，和微信一样；窄窗口和手机仍是「列表 → 全屏聊天 → 顶部返回」',
+      '聊天页顶部按设计稿补齐「搜索 / 联系人 / 更多」三个按钮：搜索可以在当前会话里按关键词和文件名找消息，联系人打开这台设备的资料卡',
+      '「更多」菜单收着设备详情、删除这段对话、关闭会话，危险的删除不再单独占一个图标',
+      'Android 更新安装报 packageInfo is null 已修复：安装包改由本应用自己的入口交给系统安装器，并保留一份校验过的源文件兜底；发布到下载目录后会先自检完整性',
+    ]),
     WispReleaseEntry(version: '2.2.1', changes: <String>[
       '修复偶发白屏：启动和从托盘恢复时不再被过渡动画卡在全透明的一帧；Android 启动底色改成与应用一致的暖中性色，深色模式也不会先闪一片白',
       '联系人点了就能打开会话，包括「设备已离线、还没聊过天」的联系人；离线会话照样能翻历史，输入框会明确置灰',
