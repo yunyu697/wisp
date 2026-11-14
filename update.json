@@ -1,11 +1,11 @@
 {
-  "version": "2.2.2",
-  "notes": "2.2.2 修入口与交互：进入会话后左侧导航与会话列表常驻（微信式分栏），聊天头按设计稿补上搜索、联系人、更多 三个按钮，可在会话内搜消息、看设备资料；Android 修复更新安装报 packageInfo is null。",
-  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v2.2.2/wisp-windows-x64-2.2.2-setup.exe",
+  "version": "2.2.3",
+  "notes": "2.2.3 修 Android 更新安装：改为把安装包字节直接写进系统安装会话，不再依赖安装器读取应用授权的地址；安装前用系统解析器验包，坏包直接提示重新下载，不再弹 packageInfo is null。",
+  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v2.2.3/wisp-windows-x64-2.2.3-setup.exe",
   "downloads": {
-    "windows": "https://github.com/yunyu697/wisp/releases/download/v2.2.2/wisp-windows-x64-2.2.2-setup.exe",
-    "macos": "https://github.com/yunyu697/wisp/releases/download/v2.2.2/wisp-macos-2.2.2.dmg",
-    "linux": "https://github.com/yunyu697/wisp/releases/download/v2.2.2/wisp-linux-x64-2.2.2.AppImage",
-    "android": "https://github.com/yunyu697/wisp/releases/download/v2.2.2/wisp-android-2.2.2.apk"
+    "windows": "https://github.com/yunyu697/wisp/releases/download/v2.2.3/wisp-windows-x64-2.2.3-setup.exe",
+    "macos": "https://github.com/yunyu697/wisp/releases/download/v2.2.3/wisp-macos-2.2.3.dmg",
+    "linux": "https://github.com/yunyu697/wisp/releases/download/v2.2.3/wisp-linux-x64-2.2.3.AppImage",
+    "android": "https://github.com/yunyu697/wisp/releases/download/v2.2.3/wisp-android-2.2.3.apk"
   }
 }

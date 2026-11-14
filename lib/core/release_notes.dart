@@ -9,15 +9,20 @@ class WispReleaseNotes {
   const WispReleaseNotes._();
 
   /// 当前应用版本（与 pubspec.yaml 的 `version:` 保持一致）。
-  static const String currentVersion = '2.2.2';
+  static const String currentVersion = '2.2.3';
 
   /// 新版本在前，设置页按这个顺序展示。
   static const List<WispReleaseEntry> entries = <WispReleaseEntry>[
+    WispReleaseEntry(version: '2.2.3', changes: <String>[
+      'Android 更新安装换了条路：不再把安装包交给系统安装器自己去读，改由 Wisp 把文件字节直接写进系统的安装会话——前两版的 packageInfo is null 就是安装器拿不到完整字节（系统下载目录的地址它读不到；改成应用内授权后，部分手机又会把这个地址转交给另一个进程，授权传不过去）',
+      '安装前先用系统自己的解析器验一遍：不是 Wisp 的安装包、或者文件不完整，会直接提示重新下载，不再让系统弹一句看不懂的英文错误',
+      '写包放到后台线程，点「安装」时界面不会卡住几十秒；系统「下载」目录里那份副本照样保留，随时能在文件管理器里手动安装',
+    ]),
     WispReleaseEntry(version: '2.2.2', changes: <String>[
       '进入会话后左侧导航和会话列表不再消失：桌面和横屏窗口里会话列表常驻，点会话只换右边的内容，和微信一样；窄窗口和手机仍是「列表 → 全屏聊天 → 顶部返回」',
       '聊天页顶部按设计稿补齐「搜索 / 联系人 / 更多」三个按钮：搜索可以在当前会话里按关键词和文件名找消息，联系人打开这台设备的资料卡',
       '「更多」菜单收着设备详情、删除这段对话、关闭会话，危险的删除不再单独占一个图标',
-      'Android 更新安装报 packageInfo is null 已修复：安装包改由本应用自己的入口交给系统安装器，并保留一份校验过的源文件兜底；发布到下载目录后会先自检完整性',
+      'Android 更新安装改进：安装包改由本应用自己的入口交给系统安装器，并保留一份校验过的源文件兜底；发布到下载目录后会先自检完整性（没彻底解决，见 2.2.3）',
     ]),
     WispReleaseEntry(version: '2.2.1', changes: <String>[
       '修复偶发白屏：启动和从托盘恢复时不再被过渡动画卡在全透明的一帧；Android 启动底色改成与应用一致的暖中性色，深色模式也不会先闪一片白',
