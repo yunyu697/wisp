@@ -151,13 +151,16 @@ void main() {
     expect(body, contains('contentResolver.delete(uri, null, null)'));
   });
 
+  // 2.2.5 诊断构建临时摘掉了清单里的接收器声明（连同 FileProvider 与两个
+  // 权限），目的是确认「2.2.1 起装不上」是否由清单引起。**这是临时状态**：
+  // 2.2.6 把清单加回去的同时必须把这条 skip 删掉，否则等于这条不变量失守。
   test('会话结果接收器存在并在清单里静态注册', () {
     expect(receiver.existsSync(), isTrue);
     expect(receiver.readAsStringSync(), contains('EXTRA_STATUS_MESSAGE'));
     final String xml = manifest.readAsStringSync();
     expect(xml, contains('android:name=".InstallResultReceiver"'));
     expect(xml, contains('android:exported="false"'));
-  });
+  }, skip: '2.2.5 诊断构建已临时摘除接收器声明，2.2.6 恢复清单后必须移除本 skip');
 
   test('Dart 侧安装句柄与展示位置分离，安装只传本地路径', () {
     final String source = installer.readAsStringSync();

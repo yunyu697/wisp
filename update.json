@@ -1,11 +1,11 @@
 {
-  "version": "2.2.4",
-  "notes": "这一版只改「能不能装上」：安装包改为 v1 + v2 双重签名，原生库改成安装时解压，绕开个别系统安装器建包信息失败导致的 packageInfo is null。功能与 2.2.3 一致。",
-  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v2.2.4/wisp-windows-x64-2.2.4-setup.exe",
+  "version": "2.2.5",
+  "notes": "诊断构建：把 2.2.1 起新增的清单元素（安装未知应用权限、外部存储写权限、两条包可见性声明、FileProvider、安装结果接收器）全部摘掉，清单还原成 2.2.0 的形状，用来确认「从 2.2.1 开始装不上」是否由清单引起。",
+  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v2.2.5/wisp-windows-x64-2.2.5-setup.exe",
   "downloads": {
-    "windows": "https://github.com/yunyu697/wisp/releases/download/v2.2.4/wisp-windows-x64-2.2.4-setup.exe",
-    "macos": "https://github.com/yunyu697/wisp/releases/download/v2.2.4/wisp-macos-2.2.4.dmg",
-    "linux": "https://github.com/yunyu697/wisp/releases/download/v2.2.4/wisp-linux-x64-2.2.4.AppImage",
-    "android": "https://github.com/yunyu697/wisp/releases/download/v2.2.4/wisp-android-2.2.4.apk"
+    "windows": "https://github.com/yunyu697/wisp/releases/download/v2.2.5/wisp-windows-x64-2.2.5-setup.exe",
+    "macos": "https://github.com/yunyu697/wisp/releases/download/v2.2.5/wisp-macos-2.2.5.dmg",
+    "linux": "https://github.com/yunyu697/wisp/releases/download/v2.2.5/wisp-linux-x64-2.2.5.AppImage",
+    "android": "https://github.com/yunyu697/wisp/releases/download/v2.2.5/wisp-android-2.2.5.apk"
   }
 }

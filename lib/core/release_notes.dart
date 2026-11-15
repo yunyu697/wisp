@@ -9,10 +9,15 @@ class WispReleaseNotes {
   const WispReleaseNotes._();
 
   /// 当前应用版本（与 pubspec.yaml 的 `version:` 保持一致）。
-  static const String currentVersion = '2.2.4';
+  static const String currentVersion = '2.2.5';
 
   /// 新版本在前，设置页按这个顺序展示。
   static const List<WispReleaseEntry> entries = <WispReleaseEntry>[
+    WispReleaseEntry(version: '2.2.5', changes: <String>[
+      '诊断构建：把 2.2.1 起新增的清单元素全部摘掉（安装未知应用权限、外部存储写权限、两条包可见性声明、FileProvider、安装结果接收器），清单还原成 2.2.0 的形状',
+      '目的只有一个：确认「从 2.2.1 开始装不上」是不是清单引起的。装得上就说明元凶在这几项里，下一版逐项加回去定位',
+      '本版代价：Android 上「一键更新」与「聊天里点开附件」会失效，仅供定位使用，不要长期停留在这个版本',
+    ]),
     WispReleaseEntry(version: '2.2.4', changes: <String>[
       '这一版只动「能不能装上」：安装包改成 v1 + v2 双重签名（部分手机的安装器只认老的 JAR 签名，只带 v2 时它拿不到签名信息，就报成解析失败）',
       '原生库改成安装时解压到本地，不再从安装包内部按页映射（个别定制系统的安装器在这条路上建包信息会失败，表现同样是 packageInfo is null）',
