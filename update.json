@@ -1,11 +1,11 @@
 {
-  "version": "2.2.3",
-  "notes": "2.2.3 修 Android 更新安装：改为把安装包字节直接写进系统安装会话，不再依赖安装器读取应用授权的地址；安装前用系统解析器验包，坏包直接提示重新下载，不再弹 packageInfo is null。",
-  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v2.2.3/wisp-windows-x64-2.2.3-setup.exe",
+  "version": "2.2.4",
+  "notes": "这一版只改「能不能装上」：安装包改为 v1 + v2 双重签名，原生库改成安装时解压，绕开个别系统安装器建包信息失败导致的 packageInfo is null。功能与 2.2.3 一致。",
+  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v2.2.4/wisp-windows-x64-2.2.4-setup.exe",
   "downloads": {
-    "windows": "https://github.com/yunyu697/wisp/releases/download/v2.2.3/wisp-windows-x64-2.2.3-setup.exe",
-    "macos": "https://github.com/yunyu697/wisp/releases/download/v2.2.3/wisp-macos-2.2.3.dmg",
-    "linux": "https://github.com/yunyu697/wisp/releases/download/v2.2.3/wisp-linux-x64-2.2.3.AppImage",
-    "android": "https://github.com/yunyu697/wisp/releases/download/v2.2.3/wisp-android-2.2.3.apk"
+    "windows": "https://github.com/yunyu697/wisp/releases/download/v2.2.4/wisp-windows-x64-2.2.4-setup.exe",
+    "macos": "https://github.com/yunyu697/wisp/releases/download/v2.2.4/wisp-macos-2.2.4.dmg",
+    "linux": "https://github.com/yunyu697/wisp/releases/download/v2.2.4/wisp-linux-x64-2.2.4.AppImage",
+    "android": "https://github.com/yunyu697/wisp/releases/download/v2.2.4/wisp-android-2.2.4.apk"
   }
 }

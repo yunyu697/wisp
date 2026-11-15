@@ -62,6 +62,12 @@ android {
                 keyPassword = keystoreProperties["keyPassword"] as String
                 storeFile = resolvedStore
                 storePassword = keystoreProperties["storePassword"] as String
+                // 同时输出 v1(JAR) + v2 两种签名。Android 7+ 默认只验 v2，
+                // 但部分国产 ROM 的安装器仍走老的 JAR 校验路径：只有 v2 时
+                // 它会拿不到签名信息，报成 "解析包失败 / packageInfo is null"。
+                // 多这一层不改变任何行为，只是让两种校验路径都能过。
+                enableV1Signing = true
+                enableV2Signing = true
             }
         }
     }
@@ -74,6 +80,19 @@ android {
                 signingConfigs.getByName("release")
             else
                 signingConfigs.getByName("debug")
+        }
+    }
+
+    // 原生库改为「安装时解压」而不是直接从 apk 里 mmap。
+    //
+    // Flutter 默认 extractNativeLibs=false：安装器只登记路径，运行时从 apk
+    // 内部按页偏移映射 .so。这条路对 apk 的对齐、ROM 的 zip 实现都敏感，
+    // 个别定制 ROM 的安装器在建立包信息时就会失败，表现正是
+    // "packageInfo is null"。改成解压落盘后，安装器只需要老老实实拷文件，
+    // 不再有页对齐这条依赖；代价是安装占用略大、首启略慢，可以接受。
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
         }
     }
 }
