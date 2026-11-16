@@ -625,7 +625,8 @@ void DrawMiniIcon(Gdiplus::Graphics& g, const Gdiplus::RectF& rc) {
   // 卡内「文件 + 上传箭头」符号：折线画法，小尺寸下比圆角路径更清楚。
   Gdiplus::Pen pen(green_rgb, s * 0.020f);
   pen.SetLineJoin(Gdiplus::LineJoinRound);
-  pen.SetLineCap(Gdiplus::LineCapRound);
+  pen.SetLineCap(Gdiplus::LineCapRound, Gdiplus::LineCapRound,
+                 Gdiplus::DashCapRound);
   const Gdiplus::PointF file_pts[7] = {
       pt(0.355f, 0.295f), pt(0.445f, 0.295f), pt(0.495f, 0.345f),
       pt(0.495f, 0.473f), pt(0.477f, 0.491f), pt(0.373f, 0.491f),
