@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -67,8 +69,19 @@ class _ContactsPageState extends State<ContactsPage> {
           _Section(letter, letter == '#' ? '其他' : letter, grouped[letter]!),
     ];
 
+    // 「联系人」不是「附近设备」的同义词：这一页以前只画留存过的联系人，
+    // 新设备必须先去「会话 → 新消息」才看得见，用户就以为发现坏了。
+    // 现在把当前发现的、还没存进联系人簿的设备直接列在最上面。
+    final List<WispDevice> nearby = state.devices
+        .where((WispDevice device) => state.contactOf(device.key) == null)
+        .toList()
+      ..sort((WispDevice a, WispDevice b) => a.alias.compareTo(b.alias));
+    final double nearbyBlockHeight = nearby.isEmpty
+        ? 0
+        : _sectionHeight + nearby.length.toDouble() * _itemHeight;
+
     final Map<String, double> offsets = <String, double>{};
-    double offset = _headerHeight;
+    double offset = _headerHeight + nearbyBlockHeight;
     for (final _Section section in sections) {
       offsets[section.letter] = offset;
       offset += _sectionHeight + section.contacts.length * _itemHeight;
@@ -94,23 +107,29 @@ class _ContactsPageState extends State<ContactsPage> {
                 height: _headerHeight,
                 child: WispPanelHeader(
                   title: '联系人',
-                  subtitle: all.isEmpty
-                      ? '互传过的设备都会记在这里'
-                      : '${all.length} 位联系人 · $online 台在线',
+                  subtitle: nearby.isEmpty
+                      ? (all.isEmpty
+                          ? '附近设备和互传过的设备都会记在这里'
+                          : '${all.length} 位联系人 · $online 台在线')
+                      : '${nearby.length} 台附近设备 · ${all.length} 位联系人',
                   compact: true,
                   padding: const EdgeInsets.fromLTRB(20, 14, 16, 10),
                 ),
               ),
             ),
-            if (all.isEmpty)
+            ..._nearbySlivers(context, state, nearby),
+            if (all.isEmpty && nearby.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,
                 child: EmptyState(
                   icon: Icons.people_alt_rounded,
-                  title: '还没有联系人',
-                  subtitle: '去「会话」页点右上角「新消息」，\n'
-                      '选一台附近的设备开始第一次互传；\n'
-                      '设备按指纹记住，换 Wi-Fi 也认得出。',
+                  title: '附近没有设备',
+                  subtitle: _discoveryHint(state),
+                  action: TextButton.icon(
+                    onPressed: () => unawaited(state.rescan()),
+                    icon: const Icon(Icons.radar_rounded, size: 16),
+                    label: const Text('立即扫描网段'),
+                  ),
                 ),
               )
             else ...<Widget>[
@@ -151,6 +170,78 @@ class _ContactsPageState extends State<ContactsPage> {
           ),
       ],
     );
+  }
+
+  /// 附近设备：当前发现到、但还没存进联系人簿的设备。
+  /// 点一下直接开会话并切回「会话」页，不需要绕「新消息」弹层。
+  /// 空态要说人话：是组播没加入、是一个包都没收到、还是被用户名规则挡了。
+  /// 以前只写「去会话页找设备」，用户完全看不出该改哪里。
+  static String _discoveryHint(AppState state) {
+    if (state.hiddenByUsername > 0) {
+      return '有 ${state.hiddenByUsername} 台设备因识别用户名不一致被隐藏，\n'
+          '请到 设置 → 网络 核对两端的用户名。';
+    }
+    final DateTime? sent = state.discoveryLastAnnounceAt;
+    final String send = sent == null ? '广播尚未发出' : '最近广播 ${Format.clock(sent)}';
+    if (!state.multicastAvailable) {
+      return '$send。组播没加入，别人搜不到你（UDP 53317）；\n'
+          '点下面的按钮扫描网段，或到 设置 → 网络 打开周期扫描。';
+    }
+    if (state.discoveryLastPeerAt == null) {
+      return '$send。一个包都没收到——多半是路由器隔离了组播，\n'
+          '或防火墙拦了 UDP 53317；可以先扫描网段。';
+    }
+    return '$send。已收到对端广播但还没有设备，\n'
+        '点下面的按钮扫描一次，或检查防火墙是否放行 UDP 53317。';
+  }
+
+  List<Widget> _nearbySlivers(
+      BuildContext context, AppState state, List<WispDevice> nearby) {
+    if (nearby.isEmpty) return const <Widget>[];
+    return <Widget>[
+      SliverToBoxAdapter(
+        child: SizedBox(
+          height: _sectionHeight,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 10, 32, 4),
+            child: Row(
+              children: <Widget>[
+                Text(
+                  '附近设备',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: WispColors.success,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Container(height: 1, color: WispColors.line(context)),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '${nearby.length}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: WispColors.secondaryText(context),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      SliverFixedExtentList(
+        itemExtent: _itemHeight,
+        delegate: SliverChildBuilderDelegate(
+          (BuildContext context, int index) => Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 32, 10),
+            child: _NearbyCard(device: nearby[index], state: state),
+          ),
+          childCount: nearby.length,
+        ),
+      ),
+    ];
   }
 
   List<Widget> _sectionSlivers(
@@ -350,6 +441,71 @@ class _ContactIndexBar extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _NearbyCard extends StatelessWidget {
+  const _NearbyCard({required this.device, required this.state});
+
+  final WispDevice device;
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 68,
+      child: Material(
+        color: WispColors.surface(context),
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          onTap: () {
+            state.openChat(device);
+            state.requestOpenConversation(device.key);
+          },
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: WispColors.success.withValues(alpha: 0.35)),
+            ),
+            child: Row(
+              children: <Widget>[
+                DeviceAvatar(kind: device.kind),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
+                      Text(
+                        device.alias,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '在线 · ${device.ip} · ${device.modelLabel}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: WispColors.secondaryText(context),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(Icons.chat_bubble_outline_rounded,
+                    size: 18, color: WispColors.success),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

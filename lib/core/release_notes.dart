@@ -9,10 +9,16 @@ class WispReleaseNotes {
   const WispReleaseNotes._();
 
   /// 当前应用版本（与 pubspec.yaml 的 `version:` 保持一致）。
-  static const String currentVersion = '2.2.5';
+  static const String currentVersion = '2.2.6';
 
   /// 新版本在前，设置页按这个顺序展示。
   static const List<WispReleaseEntry> entries = <WispReleaseEntry>[
+    WispReleaseEntry(version: '2.2.6', changes: <String>[
+      '桌面窗口点开会话后，左侧「会话 / 联系人 / 文件 / 设置」导航不再消失；窗口变窄时只收窄会话列表，不退回手机式全屏聊天',
+      '联系人页空态改成可诊断、可操作：直接说明是组播没加入、没收到广播还是用户名过滤，并提供「立即扫描网段」按钮',
+      '聊天消息补上左右头像与「已送达」标记，方向一眼可辨；每条消息都有可见的操作按钮，可复制文字、重新发送失败消息、只删这一条',
+      '沿用 2.2.5 的可安装清单：Android 上一键更新与点开附件仍暂时不可用，等定位到 2.2.1 引入的具体清单项后立即恢复',
+    ]),
     WispReleaseEntry(version: '2.2.5', changes: <String>[
       '诊断构建：把 2.2.1 起新增的清单元素全部摘掉（安装未知应用权限、外部存储写权限、两条包可见性声明、FileProvider、安装结果接收器），清单还原成 2.2.0 的形状',
       '目的只有一个：确认「从 2.2.1 开始装不上」是不是清单引起的。装得上就说明元凶在这几项里，下一版逐项加回去定位',

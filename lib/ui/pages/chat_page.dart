@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -717,7 +719,13 @@ class _ChatPageState extends State<ChatPage> {
       itemBuilder: (BuildContext context, int index) {
         final Object item = items[items.length - 1 - index];
         if (item is String) return _dayLabel(context, item);
-        return _bubble(context, state, item as ChatMessage);
+        return _bubble(
+          context,
+          state,
+          item as ChatMessage,
+          device,
+          conversation,
+        );
       },
     );
   }
@@ -760,7 +768,13 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  Widget _bubble(BuildContext context, AppState state, ChatMessage message) {
+  Widget _bubble(
+    BuildContext context,
+    AppState state,
+    ChatMessage message,
+    WispDevice? peer,
+    Conversation? conversation,
+  ) {
     final bool outgoing = message.isOutgoing;
     // 宽窗口上限 560：只按屏宽的 72% 算，2000px 的窗口上气泡会拉成一条
     // 1400px 的长条，眼睛根本跟不上换行。
@@ -774,88 +788,190 @@ class _ChatPageState extends State<ChatPage> {
             ? WispColors.darkText
             : WispColors.lightText);
 
+    // 左右方向 + 头像 + 配色三重区分：只看颜色在深色主题/色弱下不够。
+    final Widget avatar = Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: DeviceAvatar(
+        kind: outgoing ? DeviceKind.mobile : (peer?.kind ?? DeviceKind.unknown),
+        size: 28,
+      ),
+    );
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment:
-            outgoing ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment:
+            outgoing ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: <Widget>[
-          if (hasText)
-            GestureDetector(
-              onLongPress: () => _copy(message.text),
-              child: Container(
-                constraints: BoxConstraints(maxWidth: maxWidth),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  gradient: outgoing ? WispColors.brandGradient : null,
-                  color: outgoing ? null : WispColors.surfaceAlt(context),
-                  borderRadius: BorderRadius.only(
-                    topLeft: const Radius.circular(18),
-                    topRight: const Radius.circular(18),
-                    bottomLeft: Radius.circular(outgoing ? 18 : 6),
-                    bottomRight: Radius.circular(outgoing ? 6 : 18),
-                  ),
-                ),
-                child: Text(
-                  message.text,
-                  style:
-                      TextStyle(fontSize: 14.5, height: 1.45, color: textColor),
-                ),
-              ),
-            ),
-          if (message.hasAttachments) ...<Widget>[
-            if (hasText) const SizedBox(height: 6),
-            AttachmentBundle(
-              attachments: message.attachments,
-              expanded: expanded,
-              outgoing: outgoing,
-              onToggle: () => setState(() {
-                // 只由点击改变：新消息 / 滚动 / rebuild 都不动这个 Set。
-                if (expanded) {
-                  _expandedBundles.remove(message.id);
-                } else {
-                  _expandedBundles.add(message.id);
-                }
-              }),
-            ),
-          ],
-          const SizedBox(height: 4),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Text(
-                Format.clock(message.time),
-                style: Theme.of(context)
-                    .textTheme
-                    .labelMedium
-                    ?.copyWith(fontSize: 10.5),
-              ),
-              if (outgoing) ...<Widget>[
-                const SizedBox(width: 6),
-                if (message.status == MessageStatus.sending)
-                  Text(
-                    '发送中…',
-                    style: Theme.of(context)
-                        .textTheme
-                        .labelMedium
-                        ?.copyWith(fontSize: 10.5),
-                  )
-                else if (message.failed)
+          if (!outgoing) avatar,
+          if (!outgoing) const SizedBox(width: 8),
+          Flexible(
+            child: Column(
+              crossAxisAlignment:
+                  outgoing ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              children: <Widget>[
+                if (hasText)
                   GestureDetector(
-                    onTap: () => _resend(state, message),
-                    child: Text(
-                      '发送失败，点这里重试',
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                            fontSize: 10.5,
-                            color: WispColors.danger,
-                          ),
+                    onLongPress: () => _showMessageActions(state, message),
+                    child: Container(
+                      constraints: BoxConstraints(maxWidth: maxWidth),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        gradient: outgoing ? WispColors.brandGradient : null,
+                        color: outgoing ? null : WispColors.surfaceAlt(context),
+                        borderRadius: BorderRadius.only(
+                          topLeft: const Radius.circular(18),
+                          topRight: const Radius.circular(18),
+                          bottomLeft: Radius.circular(outgoing ? 18 : 6),
+                          bottomRight: Radius.circular(outgoing ? 6 : 18),
+                        ),
+                      ),
+                      child: Text(
+                        message.text,
+                        style: TextStyle(
+                            fontSize: 14.5, height: 1.45, color: textColor),
+                      ),
                     ),
                   ),
+                if (message.hasAttachments) ...<Widget>[
+                  if (hasText) const SizedBox(height: 6),
+                  AttachmentBundle(
+                    attachments: message.attachments,
+                    expanded: expanded,
+                    outgoing: outgoing,
+                    onToggle: () => setState(() {
+                      // 只由点击改变：新消息 / 滚动 / rebuild 都不动这个 Set。
+                      if (expanded) {
+                        _expandedBundles.remove(message.id);
+                      } else {
+                        _expandedBundles.add(message.id);
+                      }
+                    }),
+                  ),
+                ],
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      Format.clock(message.time),
+                      style: Theme.of(context)
+                          .textTheme
+                          .labelMedium
+                          ?.copyWith(fontSize: 10.5),
+                    ),
+                    if (outgoing) ...<Widget>[
+                      const SizedBox(width: 6),
+                      if (message.status == MessageStatus.sending)
+                        Text(
+                          '发送中…',
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelMedium
+                              ?.copyWith(fontSize: 10.5),
+                        )
+                      else if (message.failed)
+                        GestureDetector(
+                          onTap: () => _resend(state, message),
+                          child: Text(
+                            '发送失败，点这里重试',
+                            style:
+                                Theme.of(context).textTheme.labelMedium?.copyWith(
+                                      fontSize: 10.5,
+                                      color: WispColors.danger,
+                                    ),
+                          ),
+                        )
+                      else
+                        Text(
+                          '已送达',
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelMedium
+                              ?.copyWith(fontSize: 10.5),
+                        ),
+                    ],
+                    const SizedBox(width: 2),
+                    SizedBox(
+                      width: 24,
+                      height: 20,
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        iconSize: 15,
+                        tooltip: '消息操作',
+                        color: WispColors.secondaryText(context),
+                        icon: const Icon(Icons.more_horiz_rounded),
+                        onPressed: () => _showMessageActions(state, message),
+                      ),
+                    ),
+                  ],
+                ),
               ],
-            ],
+            ),
           ),
+          if (outgoing) const SizedBox(width: 8),
+          if (outgoing) avatar,
         ],
+      ),
+    );
+  }
+
+  /// 单条消息的操作入口：复制、重新发送、删除。附件本身可点开。
+  /// 以前只有「长按正文复制」且没有可见入口，用户自然认为不能操作。
+  void _showMessageActions(AppState state, ChatMessage message) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: WispColors.surface(context),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const SizedBox(height: 10),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: WispColors.line(sheetContext),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 10),
+            if (message.text.trim().isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.copy_all_rounded),
+                title: const Text('复制文字'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  unawaited(_copy(message.text));
+                },
+              ),
+            if (message.failed)
+              ListTile(
+                leading: const Icon(Icons.send_rounded),
+                title: const Text('重新发送'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  unawaited(_resend(state, message));
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline_rounded),
+              title: const Text('删除这条消息'),
+              subtitle: const Text('只删本地这一条，不影响对方'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                state.deleteMessage(widget.peerKey, message.id);
+                _toast('已删除');
+              },
+            ),
+            const SizedBox(height: 6),
+          ],
+        ),
       ),
     );
   }

@@ -166,6 +166,13 @@ class _MessagesPageState extends State<MessagesPage> {
       }
     }
 
+    // 桌面窗口窄于 900 时列表收窄，但**不消失**：侧边导航 + 会话列表 +
+    // 消息流三块始终在屏上，这才符合聊天软件的操作逻辑。
+    final double availableWidth = MediaQuery.sizeOf(context).width;
+    final double listWidth = availableWidth >= 900
+        ? 300
+        : (availableWidth >= 700 ? 250 : 190);
+
     return Row(
       // 右栏是 SingleChildScrollView，默认只按内容高度撑开，Row 会把这根
       // 短柱子垂直居中，导致身份卡底色上下各露一大截空白。整行拉伸后
@@ -173,7 +180,7 @@ class _MessagesPageState extends State<MessagesPage> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         SizedBox(
-          width: 300,
+          width: listWidth,
           child: Container(
             decoration: BoxDecoration(
               color: WispColors.surface(context),

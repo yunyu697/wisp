@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 
 /// 横屏（或够宽的窗口）下切换到「侧边导航 + 多栏布局」；
@@ -5,8 +6,20 @@ import 'package:flutter/material.dart';
 ///
 /// 用 orientation 而不是纯宽度断点，是因为用户明确要的是
 /// "竖屏和横屏"两套行为——手机横过来就该用侧边栏，而不是把单栏拉宽。
+/// 桌面端不论窗口是横是竖，一律走侧边导航。
+///
+/// 用户反馈「点开会话后左侧四项导航消失」：根因是这里原来只看 orientation，
+/// 窗口被调成竖长比例时桌面也会退回手机式底栏，点会话再 push 全屏聊天就把
+/// 导航盖掉。用 [defaultTargetPlatform] 而不是 `dart:io` 的 Platform，
+/// 这样 flutter test 里仍是手机布局，golden 不受宿主系统影响。
+bool get isDesktopPlatform =>
+    defaultTargetPlatform == TargetPlatform.windows ||
+    defaultTargetPlatform == TargetPlatform.macOS ||
+    defaultTargetPlatform == TargetPlatform.linux;
+
 bool isWideLayout(BuildContext context) {
-  return MediaQuery.of(context).orientation == Orientation.landscape;
+  return isDesktopPlatform ||
+      MediaQuery.of(context).orientation == Orientation.landscape;
 }
 
 /// 内容最大宽度：超过后在两侧留白居中，避免界面元素在宽屏上被拉伸。
@@ -29,7 +42,8 @@ const double kThreeColumnMinWidth = 1100;
 /// 这是"聊天软件操作逻辑"的基线；[isThreeColumnLayout] 是它的超集。
 bool isConversationSplitLayout(BuildContext context) =>
     isWideLayout(context) &&
-    MediaQuery.sizeOf(context).width >= kConversationSplitMinWidth;
+    (isDesktopPlatform ||
+        MediaQuery.sizeOf(context).width >= kConversationSplitMinWidth);
 
 /// 真正的宽桌面窗口：在分栏主场右侧再常驻身份卡栏。
 /// 单看 orientation 不够：手机横过来也只有 800 多像素，硬塞

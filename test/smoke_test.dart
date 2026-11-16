@@ -113,8 +113,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
 
       expect(find.text('联系人'), findsOneWidget);
-      expect(find.text('还没有联系人'), findsOneWidget);
-      expect(find.textContaining('选一台附近的设备'), findsOneWidget);
+      expect(find.text('附近没有设备'), findsOneWidget);
+      expect(find.textContaining('UDP 53317'), findsOneWidget);
+      expect(find.text('立即扫描网段'), findsOneWidget);
     });
 
     testWidgets('发送页空态给出三个入口', (WidgetTester tester) async {

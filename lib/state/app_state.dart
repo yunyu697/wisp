@@ -1044,6 +1044,18 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 只删本地这一条消息，不动会话和对方设备。
+  /// 聊天软件的基本操作：收到一条没用的消息，不该只能删掉整段对话。
+  void deleteMessage(String peerKey, String messageId) {
+    final Conversation? conversation = conversationOf(peerKey);
+    if (conversation == null) return;
+    final int before = conversation.messages.length;
+    conversation.messages.removeWhere((ChatMessage m) => m.id == messageId);
+    if (conversation.messages.length == before) return;
+    unawaited(_messageService.save(conversations));
+    notifyListeners();
+  }
+
   Conversation _ensureConversation(String key, String alias, String ip) {
     final Conversation? existing = conversationOf(key);
     if (existing != null) {
