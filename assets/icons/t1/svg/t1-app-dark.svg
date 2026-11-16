@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0C6E42"/>
+      <stop offset="1" stop-color="#053F27"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.12"/>
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="ds" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#000000" flood-opacity="0.48"/>
+    </filter>
+    <filter id="ds2" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="#000000" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+
+  <rect x="36" y="36" width="440" height="440" rx="104" fill="url(#bg)" filter="url(#ds)"/>
+  <rect x="36" y="36" width="440" height="440" rx="104" fill="url(#gloss)"/>
+  <rect x="37" y="37" width="438" height="438" rx="103" fill="none" stroke="rgba(255,255,255,0.16)" stroke-width="2"/>
+
+  <g filter="url(#ds2)">
+    <path d="M146 292 L140 330 L188 294 Z" fill="#FFFFFF"/>
+    <rect x="96" y="124" width="252" height="168" rx="50" fill="#FFFFFF"/>
+  </g>
+
+  <g fill="none" stroke="#0FA85C" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M192 166 H232 L254 188 V244 A8 8 0 0 1 246 252 H200 A8 8 0 0 1 192 244 Z"/>
+    <path d="M232 166 V188 H254"/>
+    <path d="M208 216 L223 201 L238 216"/>
+    <path d="M223 201 V233"/>
+  </g>
+
+  <g filter="url(#ds2)">
+    <path d="M402 346 L450 382 L430 338 Z" fill="#E8F8EE"/>
+    <rect x="252" y="214" width="200" height="140" rx="44" fill="#E8F8EE"/>
+  </g>
+  <g fill="#0FA85C">
+    <circle cx="304" cy="284" r="10"/>
+    <circle cx="352" cy="284" r="10"/>
+    <circle cx="400" cy="284" r="10"/>
+  </g>
+</svg>

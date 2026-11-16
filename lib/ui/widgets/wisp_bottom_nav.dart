@@ -6,12 +6,13 @@ import 'package:provider/provider.dart';
 
 import '../../core/design/app_colors.dart';
 import '../../core/design/app_motion.dart';
+import '../../core/design/t1_icons.dart';
 import '../../state/app_state.dart';
 
 class WispNavItem {
-  const WispNavItem(this.label, this.icon);
+  const WispNavItem(this.label, this.glyph);
   final String label;
-  final IconData icon;
+  final T1Glyph glyph;
 }
 
 /// 四个导航项，底栏与侧栏共用，保证两套导航完全一致。
@@ -20,10 +21,10 @@ class WispNavItem {
 /// 会话 / 联系人 / 文件 / 设置。设备发现收进「会话 → 新消息」，
 /// 发文件走会话与传输流程，不再各占一个导航位。
 const List<WispNavItem> wispNavItems = <WispNavItem>[
-  WispNavItem('会话', Icons.chat_bubble_rounded),
-  WispNavItem('联系人', Icons.people_alt_rounded),
-  WispNavItem('文件', Icons.folder_rounded),
-  WispNavItem('设置', Icons.settings_rounded),
+  WispNavItem('会话', T1Glyph.chat),
+  WispNavItem('联系人', T1Glyph.devices),
+  WispNavItem('文件', T1Glyph.transfers),
+  WispNavItem('设置', T1Glyph.settings),
 ];
 
 /// 「会话」在导航里的位置，未读角标挂在它上面。
@@ -164,7 +165,7 @@ class _NavCell extends StatelessWidget {
                   // 角标故意探出图标边界，不能被裁掉。
                   clipBehavior: Clip.none,
                   children: <Widget>[
-                    Icon(item.icon, size: _iconSize, color: color),
+                    WispT1Icon(item.glyph, size: _iconSize),
                     if (badge > 0)
                       Positioned(
                         right: -8,
@@ -270,15 +271,8 @@ class WispNavRail extends StatelessWidget {
             const SizedBox(height: 14),
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(13),
-                child: Image.asset(
-                  'assets/icon/wisp_icon_1024.png',
-                  width: 34,
-                  height: 34,
-                  filterQuality: FilterQuality.high,
-                ),
-              ),
+              // t1 应用图标自带投影，不再套 ClipRRect（会切掉阴影）。
+              child: const WispT1AppIcon(size: 34),
             ),
             const SizedBox(height: 10),
             for (int i = 0; i < wispNavItems.length; i++)
@@ -375,7 +369,7 @@ class _RailCell extends StatelessWidget {
                 Stack(
                   clipBehavior: Clip.none,
                   children: <Widget>[
-                    Icon(item.icon, size: 20, color: color),
+                    WispT1Icon(item.glyph, size: 20),
                     if (badge > 0)
                       Positioned(right: -9, top: -5, child: _NavBadge(count: badge)),
                   ],

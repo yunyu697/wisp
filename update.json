@@ -1,11 +1,11 @@
 {
-  "version": "2.2.6",
-  "notes": "承接 2.2.5 的可安装清单，修复三条实机反馈：桌面点开会话后左侧导航常驻；联系人空态可诊断并可直接扫描；聊天消息有头像/方向/已送达与可见的单条操作（复制、重发、删除）。Android 一键更新与点开附件仍暂不可用，待定位 2.2.1 引入的具体清单项后恢复。",
-  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v2.2.6/wisp-windows-x64-2.2.6-setup.exe",
+  "version": "2.2.7",
+  "notes": "换上 t1 青柠绿图标：导航、收发动作、应用启动图标全面更新，按明暗主题自动切换；Windows 与 macOS 通知卡小标志同步重画。Android 一键更新与点开附件仍暂不可用，待定位 2.2.1 引入的具体清单项后恢复。",
+  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v2.2.7/wisp-windows-x64-2.2.7-setup.exe",
   "downloads": {
-    "windows": "https://github.com/yunyu697/wisp/releases/download/v2.2.6/wisp-windows-x64-2.2.6-setup.exe",
-    "macos": "https://github.com/yunyu697/wisp/releases/download/v2.2.6/wisp-macos-2.2.6.dmg",
-    "linux": "https://github.com/yunyu697/wisp/releases/download/v2.2.6/wisp-linux-x64-2.2.6.AppImage",
-    "android": "https://github.com/yunyu697/wisp/releases/download/v2.2.6/wisp-android-2.2.6.apk"
+    "windows": "https://github.com/yunyu697/wisp/releases/download/v2.2.7/wisp-windows-x64-2.2.7-setup.exe",
+    "macos": "https://github.com/yunyu697/wisp/releases/download/v2.2.7/wisp-macos-2.2.7.dmg",
+    "linux": "https://github.com/yunyu697/wisp/releases/download/v2.2.7/wisp-linux-x64-2.2.7.AppImage",
+    "android": "https://github.com/yunyu697/wisp/releases/download/v2.2.7/wisp-android-2.2.7.apk"
   }
 }

@@ -139,8 +139,8 @@ def main() -> None:
 
     for path in _written:
         assert path.is_file() and path.stat().st_size > 0, f"写入失败：{path}"
-    print(f"方案 C 青绿图标已分发到 {len(_written)} 个平台资产文件")
-    print("矢量源：assets/icon/wisp_icon.svg（改图形后需重新光栅化两张 1024 源图）")
+    print(f"t1 青柠绿图标已分发到 {len(_written)} 个平台资产文件")
+    print("矢量源：assets/icons/t1/svg/t1-app-light.svg → assets/icon/wisp_icon.svg / wisp_icon_foreground.svg")
 
 
 if __name__ == "__main__":

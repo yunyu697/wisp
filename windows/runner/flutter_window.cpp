@@ -563,11 +563,11 @@ int DrawWrapped(Gdiplus::Graphics& g, const std::wstring& text,
   return 2;  // 布局高度由调用方固定为两行。
 }
 
-// 通知卡片左上角的迷你图标：与应用图标（方案 C「不分彼此」）同一套构图。
-// 坐标全部按 assets/icon/wisp_icon.svg 的 1024 画布归一化，改图标时改这里
-// 和 macOS WispCardView.drawIcon(in:) 两处即可，不要凭感觉挪像素。
-//   squircle 底 → 后置描边文件卡 → 前置白色消息卡（带气泡尾）
-//   → 两条青绿文字线 → 右上角珊瑚点
+// 通知卡片左上角的迷你图标：与 t1 应用图标（assets/icons/t1/svg/t1-app-light.svg）
+// 同一套构图。源图 512 画布里 squircle 占 36..476，这里把这段映射到整个 rc，
+// 其余元素按 (v-36)/440 归一化，小尺寸下主体才够大。
+// 改图形时必须同步 macOS WispCardView.drawIcon(in:)，不要凭感觉挪像素。
+//   squircle 底 → 浅绿文件卡 → 三个绿点 → 白色消息卡 → 卡内文件+上传箭头
 void DrawMiniIcon(Gdiplus::Graphics& g, const Gdiplus::RectF& rc) {
   const float s = std::min(rc.Width, rc.Height);
   const float x = rc.X + (rc.Width - s) / 2.0f;
@@ -575,60 +575,75 @@ void DrawMiniIcon(Gdiplus::Graphics& g, const Gdiplus::RectF& rc) {
   const auto box = [&](float nx, float ny, float nw, float nh) {
     return Gdiplus::RectF(x + s * nx, y + s * ny, s * nw, s * nh);
   };
+  const auto pt = [&](float nx, float ny) {
+    return Gdiplus::PointF(x + s * nx, y + s * ny);
+  };
 
-  // 青绿 squircle 底板（135° 渐变，与 app_colors.dart 的 teal / tealLight 同值）。
+  // 绿色 squircle 底（#4ED77A → #0FA85C）。
   Gdiplus::RectF bg_rc(x, y, s, s);
-  Gdiplus::GraphicsPath* bg = RoundedRect(bg_rc, s * 0.235f);
+  Gdiplus::GraphicsPath* bg = RoundedRect(bg_rc, s * 0.236f);
   Gdiplus::LinearGradientBrush grad(
-      bg_rc, Gdiplus::Color(255, 58, 200, 203),
-      Gdiplus::Color(255, 14, 124, 134), 45.0f, false);
+      bg_rc, Gdiplus::Color(255, 78, 215, 122),
+      Gdiplus::Color(255, 15, 168, 92), 45.0f, false);
   g.FillPath(&grad, bg);
   delete bg;
 
-  // 后置文件卡：只描边、倾斜 -9°，别填白，否则两层白卡会糊成一块。
+  const Gdiplus::Color pale_rgb(255, 232, 248, 238);
+  const Gdiplus::Color green_rgb(255, 15, 168, 92);
+  Gdiplus::SolidBrush pale(pale_rgb);
+
+  // 后置浅绿文件卡 + 右下气泡尾。
   Gdiplus::GraphicsPath* back =
-      RoundedRect(box(0.410f, 0.180f, 0.422f, 0.445f), s * 0.055f);
-  const Gdiplus::PointF pivot(x + s * 0.617f, y + s * 0.406f);
-  Gdiplus::Matrix spin;
-  spin.RotateAt(-9.0f, pivot);
-  back->Transform(&spin);
-  Gdiplus::Pen outline(Gdiplus::Color(160, 255, 255, 255), s * 0.018f);
-  outline.SetLineJoin(Gdiplus::LineJoinRound);
-  g.DrawPath(&outline, back);
+      RoundedRect(box(0.491f, 0.405f, 0.455f, 0.318f), s * 0.100f);
+  g.FillPath(&pale, back);
   delete back;
+  Gdiplus::PointF back_tail[3] = {
+      pt(0.832f, 0.705f), pt(0.941f, 0.786f), pt(0.896f, 0.686f)};
+  Gdiplus::GraphicsPath back_path;
+  back_path.AddPolygon(back_tail, 3);
+  g.FillPath(&pale, &back_path);
 
-  Gdiplus::SolidBrush white(Gdiplus::Color(255, 255, 255, 255));
-
-  // 前置消息卡 + 左下角实心气泡尾。
-  Gdiplus::GraphicsPath* front =
-      RoundedRect(box(0.188f, 0.406f, 0.500f, 0.360f), s * 0.102f);
-  g.FillPath(&white, front);
-  delete front;
-  Gdiplus::PointF tail_pts[3] = {
-      Gdiplus::PointF(x + s * 0.293f, y + s * 0.715f),
-      Gdiplus::PointF(x + s * 0.176f, y + s * 0.855f),
-      Gdiplus::PointF(x + s * 0.305f, y + s * 0.715f),
-  };
-  Gdiplus::GraphicsPath tail;
-  tail.AddPolygon(tail_pts, 3);
-  g.FillPath(&white, &tail);
-
-  // 卡内两条文字线用的是底板深青，不是白色。
-  Gdiplus::SolidBrush ink(Gdiplus::Color(255, 14, 124, 134));
-  const float bars[2][4] = {
-      {0.277f, 0.531f, 0.320f, 0.047f},
-      {0.277f, 0.621f, 0.100f, 0.047f},
-  };
-  for (const auto& b : bars) {
-    Gdiplus::GraphicsPath* bar =
-        RoundedRect(box(b[0], b[1], b[2], b[3]), s * 0.024f);
-    g.FillPath(&ink, bar);
-    delete bar;
+  // 三个绿点：聊天消息的视觉锚点。
+  Gdiplus::SolidBrush ink(green_rgb);
+  const float dots[3] = {0.609f, 0.718f, 0.827f};
+  for (float cx : dots) {
+    g.FillEllipse(&ink, box(cx - 0.023f, 0.541f, 0.046f, 0.046f));
   }
 
-  // 珊瑚圆点：正在移动的那份数据。
-  Gdiplus::SolidBrush coral(Gdiplus::Color(255, 255, 122, 89));
-  g.FillEllipse(&coral, box(0.758f, 0.188f, 0.117f, 0.117f));
+  // 前置白色消息卡 + 左下气泡尾。
+  Gdiplus::SolidBrush white(Gdiplus::Color(255, 255, 255, 255));
+  Gdiplus::GraphicsPath* front =
+      RoundedRect(box(0.136f, 0.200f, 0.573f, 0.382f), s * 0.114f);
+  g.FillPath(&white, front);
+  delete front;
+  Gdiplus::PointF front_tail[3] = {
+      pt(0.250f, 0.582f), pt(0.236f, 0.668f), pt(0.346f, 0.586f)};
+  Gdiplus::GraphicsPath front_path;
+  front_path.AddPolygon(front_tail, 3);
+  g.FillPath(&white, &front_path);
+
+  // 卡内「文件 + 上传箭头」符号：折线画法，小尺寸下比圆角路径更清楚。
+  Gdiplus::Pen pen(green_rgb, s * 0.020f);
+  pen.SetLineJoin(Gdiplus::LineJoinRound);
+  pen.SetLineCap(Gdiplus::LineCapRound);
+  const Gdiplus::PointF file_pts[7] = {
+      pt(0.355f, 0.295f), pt(0.445f, 0.295f), pt(0.495f, 0.345f),
+      pt(0.495f, 0.473f), pt(0.477f, 0.491f), pt(0.373f, 0.491f),
+      pt(0.355f, 0.473f)};
+  Gdiplus::GraphicsPath file;
+  file.AddPolygon(file_pts, 7);
+  g.DrawPath(&pen, &file);
+  Gdiplus::GraphicsPath fold;
+  fold.AddLine(pt(0.445f, 0.295f), pt(0.445f, 0.345f));
+  fold.AddLine(pt(0.445f, 0.345f), pt(0.495f, 0.345f));
+  g.DrawPath(&pen, &fold);
+  Gdiplus::GraphicsPath arrow;
+  arrow.AddLine(pt(0.391f, 0.409f), pt(0.425f, 0.375f));
+  arrow.AddLine(pt(0.425f, 0.375f), pt(0.459f, 0.409f));
+  g.DrawPath(&pen, &arrow);
+  Gdiplus::GraphicsPath stem;
+  stem.AddLine(pt(0.425f, 0.375f), pt(0.425f, 0.448f));
+  g.DrawPath(&pen, &stem);
 }
 
 // 渐变圆角按钮。font_px 已含 DPI 缩放（GDI+ 的 UnitPixel 是物理像素）。

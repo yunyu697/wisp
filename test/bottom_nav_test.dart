@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:wisp/core/design/app_theme.dart';
+import 'package:wisp/core/design/t1_icons.dart';
 import 'package:wisp/ui/widgets/wisp_bottom_nav.dart';
 
+import 'support/t1_assets.dart';
 import 'support/test_fonts.dart';
 
 /// 底栏专项测试。
@@ -17,6 +19,11 @@ void main() {
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
     fontFamily = await loadTestFonts();
+  });
+
+  // 先于所有截图用例执行，把图标解码进共享 ImageCache；否则深色图标会截成空白。
+  testWidgets('预热 t1 图标资源', (WidgetTester tester) async {
+    await warmUpT1Icons(tester);
   });
 
   Widget host(int index, {ThemeMode mode = ThemeMode.light}) {
@@ -50,7 +57,11 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
 
     final Rect pillRect = tester.getRect(pill());
-    final Rect iconRect = tester.getRect(find.byIcon(Icons.chat_bubble_rounded).first);
+    final Rect iconRect = tester.getRect(
+      find.byWidgetPredicate(
+        (Widget w) => w is WispT1Icon && w.glyph == T1Glyph.chat,
+      ).first,
+    );
     final Rect labelRect = tester.getRect(find.text('会话'));
 
     expect(pillRect.contains(iconRect.topLeft), isTrue, reason: '高亮块没盖住图标顶部');

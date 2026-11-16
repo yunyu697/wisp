@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/design/app_colors.dart';
 import '../../core/design/app_motion.dart';
+import '../../core/design/t1_icons.dart';
 import '../../core/utils/format.dart';
 import '../../models/transfer.dart';
 import '../../state/app_state.dart';
@@ -162,12 +163,11 @@ class _RingContent extends StatelessWidget {
       children: <Widget>[
         AnimatedSwitcher(
           duration: WispMotion.base,
-          child: Icon(
-            done ? Icons.check_rounded : Icons.arrow_upward_rounded,
-            key: ValueKey<bool>(done),
-            size: 26,
-            color: done ? WispColors.success : WispColors.accent(context),
-          ),
+          child: done
+              ? const Icon(Icons.check_rounded,
+                  key: ValueKey<bool>(true), size: 26, color: WispColors.success)
+              : const WispT1Icon(T1Glyph.transfers,
+                  key: ValueKey<bool>(false), size: 26),
         ),
         const SizedBox(height: 6),
         TweenAnimationBuilder<double>(

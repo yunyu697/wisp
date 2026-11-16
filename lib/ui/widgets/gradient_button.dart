@@ -9,6 +9,7 @@ class GradientButton extends StatefulWidget {
     super.key,
     required this.label,
     this.icon,
+    this.t1Icon,
     this.onPressed,
     this.loading = false,
     this.expand = true,
@@ -17,6 +18,9 @@ class GradientButton extends StatefulWidget {
 
   final String label;
   final IconData? icon;
+
+  /// 双主题 t1 图标优先于 [icon]；用于品牌图标统一后的主行动按钮。
+  final Widget? t1Icon;
   final VoidCallback? onPressed;
   final bool loading;
   final bool expand;
@@ -51,8 +55,12 @@ class _GradientButtonState extends State<GradientButton> {
               key: const ValueKey<String>('label'),
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                if (widget.icon != null) ...<Widget>[
-                  Icon(widget.icon, color: fg, size: 19),
+                if (widget.t1Icon != null || widget.icon != null) ...<Widget>[
+                  SizedBox(
+                    width: 19,
+                    height: 19,
+                    child: widget.t1Icon ?? Icon(widget.icon, color: fg, size: 19),
+                  ),
                   const SizedBox(width: 8),
                 ],
                 Text(

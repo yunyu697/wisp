@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/design/app_colors.dart';
 import '../../core/design/app_motion.dart';
+import '../../core/design/t1_icons.dart';
 import '../../core/utils/format.dart';
 import '../../models/transfer.dart';
 import '../../state/app_state.dart';
@@ -278,6 +279,7 @@ class HistoryPage extends StatelessWidget {
               ),
               _ActionRow(
                 icon: Icons.send_rounded,
+                t1Icon: const WispT1Icon(T1Glyph.send, size: 18),
                 label: '再次发送',
                 hint: record.canResend
                     ? '把源文件放回待发清单'
@@ -439,10 +441,12 @@ class _ActionRow extends StatelessWidget {
     required this.hint,
     required this.enabled,
     required this.onTap,
+    this.t1Icon,
     this.danger = false,
   });
 
   final IconData icon;
+  final Widget? t1Icon;
   final String label;
   final String hint;
   final bool enabled;
@@ -471,7 +475,7 @@ class _ActionRow extends StatelessWidget {
                     color: tint.withValues(alpha: 0.10),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(icon, size: 18, color: tint),
+                  child: t1Icon ?? Icon(icon, size: 18, color: tint),
                 ),
                 const SizedBox(width: 12),
                 Expanded(

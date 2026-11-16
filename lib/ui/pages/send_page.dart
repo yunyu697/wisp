@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/design/app_colors.dart';
 import '../../core/design/app_motion.dart';
+import '../../core/design/t1_icons.dart';
 import '../../core/utils/format.dart';
 import '../../core/utils/pickers.dart';
 import '../../models/device.dart';
@@ -117,7 +118,7 @@ class _SendPageState extends State<SendPage> {
   Widget _sendButton(BuildContext context, AppState state, WispDevice? target, {bool expand = true}) {
     return GradientButton(
       label: target == null ? '附近没有可用设备' : '发送到 ${target.alias}',
-      icon: Icons.arrow_upward_rounded,
+      t1Icon: const WispT1Icon(T1Glyph.send, size: 19),
       expand: expand,
       onPressed: target == null || state.draft.isEmpty
           ? null

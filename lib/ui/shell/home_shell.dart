@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/design/app_colors.dart';
 import '../../core/design/app_motion.dart';
+import '../../core/design/t1_icons.dart';
 import '../../core/utils/format.dart';
 import '../../models/transfer.dart';
 import '../../services/receiver_service.dart';
@@ -323,7 +324,7 @@ class _IncomingSheet extends StatelessWidget {
                 Expanded(
                   child: GradientButton(
                     label: '接收',
-                    icon: Icons.download_rounded,
+                    t1Icon: const WispT1Icon(T1Glyph.receive, size: 19),
                     onPressed: () {
                       Navigator.of(context).pop();
                       state.acceptIncoming();

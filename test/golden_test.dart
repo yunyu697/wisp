@@ -19,6 +19,7 @@ import 'package:wisp/ui/pages/settings_page.dart';
 import 'package:wisp/ui/pages/transfer_page.dart';
 import 'package:wisp/ui/shell/home_shell.dart';
 
+import 'support/t1_assets.dart';
 import 'support/test_fonts.dart';
 
 /// 生成真实渲染截图（golden）。
@@ -34,6 +35,11 @@ void main() {
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
     fontFamily = await loadTestFonts();
+  });
+
+  // 先于所有截图用例执行，把图标解码进共享 ImageCache；否则深色图标会截成空白。
+  testWidgets('预热 t1 图标资源', (WidgetTester tester) async {
+    await warmUpT1Icons(tester);
   });
 
   /// 固定的身份，让截图可复现。

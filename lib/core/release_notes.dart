@@ -9,10 +9,15 @@ class WispReleaseNotes {
   const WispReleaseNotes._();
 
   /// 当前应用版本（与 pubspec.yaml 的 `version:` 保持一致）。
-  static const String currentVersion = '2.2.6';
+  static const String currentVersion = '2.2.7';
 
   /// 新版本在前，设置页按这个顺序展示。
   static const List<WispReleaseEntry> entries = <WispReleaseEntry>[
+    WispReleaseEntry(version: '2.2.7', changes: <String>[
+      '换上 t1 青柠绿图标：底部与侧边导航、发送与接收动作按钮、应用启动图标全面更新；图标按明暗主题自动切换，深色主题用浅描边配亮绿强调',
+      'Windows 与 macOS 通知卡片里的小标志同步重画，和新的应用图标保持同一套构图',
+      '沿用 2.2.5 的可安装清单：Android 上一键更新与点开附件仍暂时不可用，等定位到 2.2.1 引入的具体清单项后立即恢复',
+    ]),
     WispReleaseEntry(version: '2.2.6', changes: <String>[
       '桌面窗口点开会话后，左侧「会话 / 联系人 / 文件 / 设置」导航不再消失；窗口变窄时只收窄会话列表，不退回手机式全屏聊天',
       '联系人页空态改成可诊断、可操作：直接说明是组播没加入、没收到广播还是用户名过滤，并提供「立即扫描网段」按钮',

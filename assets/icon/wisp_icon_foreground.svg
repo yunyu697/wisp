@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- t1 应用图标的 Android 自适应前景：只保留两张气泡卡，去掉 squircle 底板。
+       源：assets/icons/t1/svg/t1-app-light.svg。图形居中缩到约 62% 画布，
+       给系统圆形/方形遮罩留出安全区。 -->
+  <defs>
+    <filter id="ds2" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="#000000" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+  <g transform="translate(256 256) scale(0.90) translate(-273 -253)">
+    <g filter="url(#ds2)">
+      <path d="M146 292 L140 330 L188 294 Z" fill="#FFFFFF"/>
+      <rect x="96" y="124" width="252" height="168" rx="50" fill="#FFFFFF"/>
+    </g>
+    <g fill="none" stroke="#0FA85C" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M192 166 H232 L254 188 V244 A8 8 0 0 1 246 252 H200 A8 8 0 0 1 192 244 Z"/>
+      <path d="M232 166 V188 H254"/>
+      <path d="M208 216 L223 201 L238 216"/>
+      <path d="M223 201 V233"/>
+    </g>
+    <g filter="url(#ds2)">
+      <path d="M402 346 L450 382 L430 338 Z" fill="#E8F8EE"/>
+      <rect x="252" y="214" width="200" height="140" rx="44" fill="#E8F8EE"/>
+    </g>
+    <g fill="#0FA85C">
+      <circle cx="304" cy="284" r="10"/>
+      <circle cx="352" cy="284" r="10"/>
+      <circle cx="400" cy="284" r="10"/>
+    </g>
+  </g>
+</svg>

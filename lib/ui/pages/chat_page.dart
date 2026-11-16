@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/design/app_colors.dart';
+import '../../core/design/t1_icons.dart';
 import '../../core/utils/format.dart';
 import '../../core/utils/pickers.dart';
 import '../../models/contact.dart';
@@ -612,7 +613,7 @@ class _ChatPageState extends State<ChatPage> {
               if (device != null)
                 GradientButton(
                   label: '给 ${conversation?.peerAlias ?? '这台设备'} 发文件',
-                  icon: Icons.arrow_upward_rounded,
+                  t1Icon: const WispT1Icon(T1Glyph.send, size: 19),
                   onPressed: () async {
                     Navigator.of(sheetContext).pop();
                     await startSendFlow(context, state, device);
@@ -952,7 +953,7 @@ class _ChatPageState extends State<ChatPage> {
               ),
             if (message.failed)
               ListTile(
-                leading: const Icon(Icons.send_rounded),
+                leading: const WispT1Icon(T1Glyph.send, size: 22),
                 title: const Text('重新发送'),
                 onTap: () {
                   Navigator.of(sheetContext).pop();
@@ -1131,10 +1132,12 @@ class _ChatPageState extends State<ChatPage> {
           gradient: enabled ? WispColors.brandGradient : null,
           color: enabled ? null : WispColors.surfaceAlt(context),
         ),
-        child: Icon(
-          Icons.arrow_upward_rounded,
+        // 渐变底上用浅描边版；禁用态降透明度而不是换回 Material 图标。
+        child: WispT1Icon(
+          T1Glyph.send,
           size: 20,
-          color: enabled ? Colors.white : WispColors.secondaryText(context),
+          forceDark: true,
+          opacity: enabled ? 1 : 0.38,
         ),
       ),
     );

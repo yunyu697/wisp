@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/design/app_colors.dart';
+import '../../core/design/t1_icons.dart';
 import '../../models/device.dart';
 import '../../state/app_state.dart';
 import '../flows/send_flow.dart';
@@ -155,7 +156,7 @@ Future<void> showDeviceSheet(BuildContext context, AppState state, WispDevice de
           const SizedBox(height: 20),
           GradientButton(
             label: '发送文件',
-            icon: Icons.arrow_upward_rounded,
+            t1Icon: const WispT1Icon(T1Glyph.send, size: 19),
             onPressed: () async {
               Navigator.of(sheetContext).pop();
               await startSendFlow(context, state, device);

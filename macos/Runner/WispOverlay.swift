@@ -199,61 +199,82 @@ final class WispCardView: NSView {
 
   // MARK: 绘制细节
 
-  /// 迷你图标：方案 C「不分彼此」——青绿 squircle 底 + 后置描边文件卡
-  /// + 前置白色消息卡（带气泡尾）+ 两条青绿文字线 + 珊瑚圆点。
-  /// 坐标按 assets/icon/wisp_icon.svg 的 1024 画布归一化；Windows 侧
-  /// DrawMiniIcon 用同一组数字，改图标必须两处一起改。
+  /// 迷你图标：t1 青柠绿应用图标（assets/icons/t1/svg/t1-app-light.svg）。
+  /// squircle 底 + 浅绿文件卡 + 三个绿点 + 白色消息卡 + 卡内文件+上传箭头。
+  /// 坐标按 SVG 语义（y 向下）写，box/pt 内部翻转到 AppKit 坐标系；
+  /// Windows 侧 DrawMiniIcon 用同一组数字，改图标必须两处一起改。
   private func drawIcon(in rect: NSRect) {
     let s = min(rect.width, rect.height)
     let x = rect.minX + (rect.width - s) / 2
     let y = rect.minY + (rect.height - s) / 2
     func box(_ nx: CGFloat, _ ny: CGFloat,
              _ nw: CGFloat, _ nh: CGFloat) -> NSRect {
-      NSRect(x: x + s * nx, y: y + s * ny, width: s * nw, height: s * nh)
+      NSRect(x: x + s * nx, y: y + s * (1 - ny - nh),
+             width: s * nw, height: s * nh)
+    }
+    func pt(_ nx: CGFloat, _ ny: CGFloat) -> NSPoint {
+      NSPoint(x: x + s * nx, y: y + s * (1 - ny))
     }
 
-    // 底板：与 WispInk.brand / brandLight 同源的渐变。
+    // 绿色 squircle 底（#4ED77A → #0FA85C）。
     let bg = NSBezierPath(roundedRect: NSRect(x: x, y: y, width: s, height: s),
-                          xRadius: s * 0.235, yRadius: s * 0.235)
-    NSGradient(starting: WispInk.brandLight, ending: WispInk.brand)?.draw(in: bg, angle: 90)
+                          xRadius: s * 0.236, yRadius: s * 0.236)
+    let light = NSColor(red: 78 / 255, green: 215 / 255, blue: 122 / 255, alpha: 1)
+    let deep = NSColor(red: 15 / 255, green: 168 / 255, blue: 92 / 255, alpha: 1)
+    NSGradient(starting: light, ending: deep)?.draw(in: bg, angle: 90)
 
-    // 后置文件卡：只描边、倾斜 -9°，别填白，否则两层白卡会糊成一块。
-    let back = NSBezierPath(roundedRect: box(0.410, 0.180, 0.422, 0.445),
-                            xRadius: s * 0.055, yRadius: s * 0.055)
-    let cx = x + s * 0.617, cy = y + s * 0.406
-    NSGraphicsContext.saveGraphicsState()
-    let spin = NSAffineTransform()
-    spin.translateX(by: cx, yBy: cy)
-    spin.rotate(byDegrees: -9)
-    spin.translateX(by: -cx, yBy: -cy)
-    spin.concat()
-    NSColor.white.withAlphaComponent(0.6).setStroke()
-    back.lineWidth = s * 0.018
-    back.lineJoinStyle = .round
-    back.stroke()
-    NSGraphicsContext.restoreGraphicsState()
+    // 后置浅绿文件卡 + 右下气泡尾。
+    let pale = NSColor(red: 232 / 255, green: 248 / 255, blue: 238 / 255, alpha: 1)
+    pale.setFill()
+    NSBezierPath(roundedRect: box(0.491, 0.405, 0.455, 0.318),
+                 xRadius: s * 0.100, yRadius: s * 0.100).fill()
+    let backTail = NSBezierPath()
+    backTail.move(to: pt(0.832, 0.705))
+    backTail.line(to: pt(0.941, 0.786))
+    backTail.line(to: pt(0.896, 0.686))
+    backTail.close()
+    backTail.fill()
 
-    // 前置消息卡 + 左下角实心气泡尾。
-    NSColor.white.setFill()
-    NSBezierPath(roundedRect: box(0.188, 0.406, 0.500, 0.360),
-                 xRadius: s * 0.102, yRadius: s * 0.102).fill()
-    let tail = NSBezierPath()
-    tail.move(to: NSPoint(x: x + s * 0.293, y: y + s * 0.715))
-    tail.line(to: NSPoint(x: x + s * 0.176, y: y + s * 0.855))
-    tail.line(to: NSPoint(x: x + s * 0.305, y: y + s * 0.715))
-    tail.close()
-    tail.fill()
-
-    // 卡内两条文字线用的是底板深青，不是白色。
-    WispInk.brand.setFill()
-    let bars: [(CGFloat, CGFloat)] = [(0.531, 0.320), (0.621, 0.100)]
-    for (ny, nw) in bars {
-      NSBezierPath(roundedRect: box(0.277, ny, nw, 0.047),
-                   xRadius: s * 0.024, yRadius: s * 0.024).fill()
+    // 三个绿点。
+    deep.setFill()
+    for cx in [0.609, 0.718, 0.827] {
+      NSBezierPath(ovalIn: box(cx - 0.023, 0.541, 0.046, 0.046)).fill()
     }
 
-    WispInk.coral.setFill()
-    NSBezierPath(ovalIn: box(0.758, 0.188, 0.117, 0.117)).fill()
+    // 前置白色消息卡 + 左下气泡尾。
+    NSColor.white.setFill()
+    NSBezierPath(roundedRect: box(0.136, 0.200, 0.573, 0.382),
+                 xRadius: s * 0.114, yRadius: s * 0.114).fill()
+    let frontTail = NSBezierPath()
+    frontTail.move(to: pt(0.250, 0.582))
+    frontTail.line(to: pt(0.236, 0.668))
+    frontTail.line(to: pt(0.346, 0.586))
+    frontTail.close()
+    frontTail.fill()
+
+    // 卡内「文件 + 上传箭头」符号。
+    deep.setStroke()
+    let stroke = NSBezierPath()
+    stroke.lineWidth = s * 0.020
+    stroke.lineJoinStyle = .round
+    stroke.lineCapStyle = .round
+    stroke.move(to: pt(0.355, 0.295))
+    stroke.line(to: pt(0.445, 0.295))
+    stroke.line(to: pt(0.495, 0.345))
+    stroke.line(to: pt(0.495, 0.473))
+    stroke.line(to: pt(0.477, 0.491))
+    stroke.line(to: pt(0.373, 0.491))
+    stroke.line(to: pt(0.355, 0.473))
+    stroke.close()
+    stroke.move(to: pt(0.445, 0.295))
+    stroke.line(to: pt(0.445, 0.345))
+    stroke.line(to: pt(0.495, 0.345))
+    stroke.move(to: pt(0.391, 0.409))
+    stroke.line(to: pt(0.425, 0.375))
+    stroke.line(to: pt(0.459, 0.409))
+    stroke.move(to: pt(0.425, 0.375))
+    stroke.line(to: pt(0.425, 0.448))
+    stroke.stroke()
   }
 
   private func drawButton(_ rect: NSRect, filled: Bool, label: String, dark: Bool) {
