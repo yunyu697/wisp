@@ -1,11 +1,11 @@
 {
-  "version": "2.2.7",
-  "notes": "换上 t1 青柠绿图标：导航、收发动作、应用启动图标全面更新，按明暗主题自动切换；Windows 与 macOS 通知卡小标志同步重画。Android 一键更新与点开附件仍暂不可用，待定位 2.2.1 引入的具体清单项后恢复。",
-  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v2.2.7/wisp-windows-x64-2.2.7-setup.exe",
+  "version": "2.2.8",
+  "notes": "聊天记录支持右键菜单：文字可复制，文件可打开/打开所在文件夹/复制文件名，失败可重发，消息可单删；手机端长按同样可用。修复从会话页点侧栏设置/联系人没反应的问题。Android 一键更新与点开附件仍暂不可用，待定位 2.2.1 引入的具体清单项后恢复。",
+  "downloadUrl": "https://github.com/yunyu697/wisp/releases/download/v2.2.8/wisp-windows-x64-2.2.8-setup.exe",
   "downloads": {
-    "windows": "https://github.com/yunyu697/wisp/releases/download/v2.2.7/wisp-windows-x64-2.2.7-setup.exe",
-    "macos": "https://github.com/yunyu697/wisp/releases/download/v2.2.7/wisp-macos-2.2.7.dmg",
-    "linux": "https://github.com/yunyu697/wisp/releases/download/v2.2.7/wisp-linux-x64-2.2.7.AppImage",
-    "android": "https://github.com/yunyu697/wisp/releases/download/v2.2.7/wisp-android-2.2.7.apk"
+    "windows": "https://github.com/yunyu697/wisp/releases/download/v2.2.8/wisp-windows-x64-2.2.8-setup.exe",
+    "macos": "https://github.com/yunyu697/wisp/releases/download/v2.2.8/wisp-macos-2.2.8.dmg",
+    "linux": "https://github.com/yunyu697/wisp/releases/download/v2.2.8/wisp-linux-x64-2.2.8.AppImage",
+    "android": "https://github.com/yunyu697/wisp/releases/download/v2.2.8/wisp-android-2.2.8.apk"
   }
 }

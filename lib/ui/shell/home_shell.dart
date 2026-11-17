@@ -208,14 +208,21 @@ class _HomeShellState extends State<HomeShell> {
           WispNavRail(index: _index, onChanged: _select, unread: _unread),
           Expanded(
             child: SafeArea(
-              child: fullBleed
-                  ? pages
-                  : Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
-                        child: pages,
-                      ),
-                    ),
+              // PageView 必须始终待在同一棵树位置。旧写法用
+              // `fullBleed ? pages : Center(ConstrainedBox(pages))` 两套结构：
+              // 从会话页切到别的页时，fullBleed true→false，父节点从 SafeArea
+              // 变成 Center，PageView 被卸载重建，_select 里的 animateToPage
+              // 打到旧对象上，新 PageView 又从 initialPage=0（会话）开始——
+              // 表现就是「在会话界面点设置/联系人没反应」。层数恒定、只切约束，
+              // 导航切换就只是更新 PageView，不会卸载。
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: fullBleed ? double.infinity : kMaxContentWidth,
+                  ),
+                  child: pages,
+                ),
+              ),
             ),
           ),
         ],

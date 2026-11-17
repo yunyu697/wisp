@@ -7,6 +7,9 @@ import 'package:wisp/core/design/app_theme.dart';
 import 'package:wisp/models/device.dart';
 import 'package:wisp/state/app_state.dart';
 import 'package:wisp/ui/pages/chat_page.dart';
+import 'package:wisp/ui/pages/contacts_page.dart';
+import 'package:wisp/ui/pages/history_page.dart';
+import 'package:wisp/ui/pages/settings_page.dart';
 import 'package:wisp/ui/shell/home_shell.dart';
 import 'package:wisp/ui/widgets/contact_inspector.dart';
 import 'package:wisp/ui/widgets/wisp_bottom_nav.dart';
@@ -154,5 +157,51 @@ void main() {
     expect(chatOf(tester).embedded, isFalse);
     expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
     expect(find.text('搜索联系人、文件或内容'), findsNothing);
+  });
+
+  /// 曾经的 bug：会话页是 fullBleed（PageView 直接挂 SafeArea 下），从它切
+  /// 到设置/联系人时 fullBleed 变 false，PageView 被挪进 Center+ConstrainedBox，
+  /// 树结构变化导致 PageView 卸载重建，_select 里的 animateToPage 打到旧对象，
+  /// 新 PageView 又从 initialPage=0（会话）开始——表现为「在会话界面点设置
+  /// 没反应」。只有从会话页切出去会中招，其它页互切正常。这里钉死全部方向。
+  testWidgets('宽屏：从会话页点侧栏可切到设置/联系人，再切回也正常',
+      (WidgetTester tester) async {
+    viewport(tester, const Size(1440, 900));
+    await tester.pumpWidget(host(stateWithChats()));
+    await tester.pumpAndSettle();
+
+    // 先进会话页（点开一台设备的聊天）。
+    await tester.tap(find.text('客厅的 Mac mini').first);
+    await tester.pumpAndSettle();
+    expect(find.byType(WispNavRail), findsOneWidget);
+
+    // 会话 -> 设置（回归点：之前这一步完全没反应）。
+    await tester.tap(find.byTooltip('设置'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SettingsPage), findsOneWidget);
+
+    // 设置 -> 联系人。
+    await tester.tap(find.byTooltip('联系人'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ContactsPage), findsOneWidget);
+
+    // 联系人 -> 文件。
+    await tester.tap(find.byTooltip('文件'));
+    await tester.pumpAndSettle();
+    expect(find.byType(HistoryPage), findsOneWidget);
+
+    // 文件 -> 设置。
+    await tester.tap(find.byTooltip('设置'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SettingsPage), findsOneWidget);
+
+    // 设置 -> 会话（切回主场）：回到会话列表，不自动打开某个聊天。
+    await tester.tap(find.byTooltip('会话'));
+    await tester.pumpAndSettle();
+    expect(find.text('搜索联系人、文件或内容'), findsOneWidget);
+    // 切回来之后仍能正常点开聊天（证明 PageView 没在切换中被弄坏）。
+    await tester.tap(find.text('客厅的 Mac mini').first);
+    await tester.pumpAndSettle();
+    expect(find.byType(ChatPage), findsOneWidget);
   });
 }

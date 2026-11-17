@@ -9,10 +9,15 @@ class WispReleaseNotes {
   const WispReleaseNotes._();
 
   /// 当前应用版本（与 pubspec.yaml 的 `version:` 保持一致）。
-  static const String currentVersion = '2.2.7';
+  static const String currentVersion = '2.2.8';
 
   /// 新版本在前，设置页按这个顺序展示。
   static const List<WispReleaseEntry> entries = <WispReleaseEntry>[
+    WispReleaseEntry(version: '2.2.8', changes: <String>[
+      '聊天记录支持右键菜单：文字可复制；文件可打开、打开所在文件夹、复制文件名；失败消息可重发，任何消息都能单独删除。手机端长按同样弹出这些操作',
+      '修复从会话页点侧栏「设置 / 联系人」没反应的问题：切换导航不再打断页面动画，会话与其余三页来回切都正常',
+      '沿用 2.2.5 的可安装清单：Android 上一键更新与点开附件仍暂时不可用，等定位到 2.2.1 引入的具体清单项后立即恢复',
+    ]),
     WispReleaseEntry(version: '2.2.7', changes: <String>[
       '换上 t1 青柠绿图标：底部与侧边导航、发送与接收动作按钮、应用启动图标全面更新；图标按明暗主题自动切换，深色主题用浅描边配亮绿强调',
       'Windows 与 macOS 通知卡片里的小标志同步重画，和新的应用图标保持同一套构图',

@@ -52,3 +52,34 @@ Future<OpenFileResult> openLocalFile(String path) async {
     return OpenFileResult.fail('没能唤起系统程序打开这个文件');
   }
 }
+
+/// 在系统文件管理器里定位并选中一个文件（"打开所在文件夹"）。
+///
+/// 与 [openLocalFile] 分开：这个动作是在文件夹里高亮那个文件，而不是打开它。
+/// Windows 用 `explorer /select,`，macOS 用 `open -R`，Linux 退回打开父目录
+/// （xdg-open 没有可靠的"选中文件"参数）。文件不在时给出明确反馈。
+Future<OpenFileResult> revealInFolder(String path) async {
+  if (path.trim().isEmpty) {
+    return OpenFileResult.fail('这个附件没有可用的本地路径');
+  }
+  final File file = File(path);
+  if (!file.existsSync()) {
+    return OpenFileResult.fail('文件已经不在原来的位置了');
+  }
+
+  try {
+    if (Platform.isWindows) {
+      // /select, 后面直接接完整路径（逗号后不留空格），explorer 会高亮该文件。
+      await Process.run('explorer.exe', <String>['/select,', file.absolute.path]);
+    } else if (Platform.isMacOS) {
+      await Process.run('open', <String>['-R', file.absolute.path]);
+    } else if (Platform.isLinux) {
+      await Process.run('xdg-open', <String>[file.parent.absolute.path]);
+    } else {
+      return OpenFileResult.fail('当前平台暂不支持打开所在文件夹');
+    }
+    return OpenFileResult.ok;
+  } catch (_) {
+    return OpenFileResult.fail('没能唤起文件管理器');
+  }
+}

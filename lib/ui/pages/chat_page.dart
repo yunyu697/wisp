@@ -1,5 +1,7 @@
 import 'dart:async' show unawaited;
+import 'dart:io' show File;
 
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -7,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../../core/design/app_colors.dart';
 import '../../core/design/t1_icons.dart';
 import '../../core/utils/format.dart';
+import '../../core/utils/open_file.dart';
 import '../../core/utils/pickers.dart';
 import '../../models/contact.dart';
 import '../../models/device.dart';
@@ -18,6 +21,24 @@ import '../widgets/attachment_bundle.dart';
 import '../widgets/device_sheets.dart';
 import '../widgets/device_tile.dart';
 import '../widgets/gradient_button.dart';
+
+/// 消息右键/长按菜单里的一条操作。桌面右键菜单与手机长按弹层共用它，
+/// 保证两端功能一致。
+class _MsgAction {
+  const _MsgAction({
+    required this.icon,
+    required this.label,
+    this.subtitle,
+    this.danger = false,
+    required this.onTap,
+  });
+
+  final Widget icon;
+  final String label;
+  final String? subtitle;
+  final bool danger;
+  final VoidCallback onTap;
+}
 
 /// 聊天页：气泡 + 输入框 + 一键发送剪贴板。
 ///
@@ -815,6 +836,8 @@ class _ChatPageState extends State<ChatPage> {
                 if (hasText)
                   GestureDetector(
                     onLongPress: () => _showMessageActions(state, message),
+                    onSecondaryTapDown: (TapDownDetails d) =>
+                        _showMessageActions(state, message, position: d.globalPosition),
                     child: Container(
                       constraints: BoxConstraints(maxWidth: maxWidth),
                       padding: const EdgeInsets.symmetric(
@@ -838,18 +861,23 @@ class _ChatPageState extends State<ChatPage> {
                   ),
                 if (message.hasAttachments) ...<Widget>[
                   if (hasText) const SizedBox(height: 6),
-                  AttachmentBundle(
-                    attachments: message.attachments,
-                    expanded: expanded,
-                    outgoing: outgoing,
-                    onToggle: () => setState(() {
-                      // 只由点击改变：新消息 / 滚动 / rebuild 都不动这个 Set。
-                      if (expanded) {
-                        _expandedBundles.remove(message.id);
-                      } else {
-                        _expandedBundles.add(message.id);
-                      }
-                    }),
+                  GestureDetector(
+                    onSecondaryTapDown: (TapDownDetails d) => _showMessageActions(
+                        state, message,
+                        position: d.globalPosition),
+                    child: AttachmentBundle(
+                      attachments: message.attachments,
+                      expanded: expanded,
+                      outgoing: outgoing,
+                      onToggle: () => setState(() {
+                        // 只由点击改变：新消息 / 滚动 / rebuild 都不动这个 Set。
+                        if (expanded) {
+                          _expandedBundles.remove(message.id);
+                        } else {
+                          _expandedBundles.add(message.id);
+                        }
+                      }),
+                    ),
                   ),
                 ],
                 const SizedBox(height: 4),
@@ -919,9 +947,135 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  /// 单条消息的操作入口：复制、重新发送、删除。附件本身可点开。
-  /// 以前只有「长按正文复制」且没有可见入口，用户自然认为不能操作。
-  void _showMessageActions(AppState state, ChatMessage message) {
+  /// 按消息内容生成可用动作：文字可复制；附件可打开、定位到文件、复制文件名；
+  /// 失败消息可重发；任何消息都能删自己这一条。
+  List<_MsgAction> _messageActions(AppState state, ChatMessage message) {
+    final List<_MsgAction> actions = <_MsgAction>[];
+
+    if (message.text.trim().isNotEmpty) {
+      actions.add(_MsgAction(
+        icon: const Icon(Icons.copy_all_rounded),
+        label: '复制文字',
+        onTap: () => unawaited(_copy(message.text)),
+      ));
+    }
+
+    for (final ChatAttachment a in message.attachments) {
+      final bool exists = a.hasPath && File(a.path).existsSync();
+      actions.add(_MsgAction(
+        icon: const Icon(Icons.content_copy_rounded),
+        label: '复制文件名',
+        subtitle: a.name,
+        onTap: () => unawaited(_copy(a.name)),
+      ));
+      if (exists) {
+        actions.add(_MsgAction(
+          icon: const Icon(Icons.open_in_new_rounded),
+          label: '打开文件',
+          subtitle: a.name,
+          onTap: () async {
+            final OpenFileResult r = await openLocalFile(a.path);
+            if (!r.opened) _toast(r.message ?? '没能打开这个文件');
+          },
+        ));
+        actions.add(_MsgAction(
+          icon: const Icon(Icons.folder_open_rounded),
+          label: '打开所在文件夹',
+          subtitle: a.name,
+          onTap: () async {
+            final OpenFileResult r = await revealInFolder(a.path);
+            if (!r.opened) _toast(r.message ?? '没能打开文件所在文件夹');
+          },
+        ));
+      }
+    }
+
+    if (message.failed) {
+      actions.add(_MsgAction(
+        icon: const WispT1Icon(T1Glyph.send, size: 22),
+        label: '重新发送',
+        onTap: () => unawaited(_resend(state, message)),
+      ));
+    }
+
+    actions.add(_MsgAction(
+      icon: const Icon(Icons.delete_outline_rounded),
+      label: '删除这条消息',
+      subtitle: '只删本地这一条，不影响对方',
+      danger: true,
+      onTap: () {
+        state.deleteMessage(widget.peerKey, message.id);
+        _toast('已删除');
+      },
+    ));
+    return actions;
+  }
+
+  /// 消息操作入口。桌面（有鼠标右键位置）就地弹出 MenuAnchor 风格的菜单；
+  /// 手机/触屏没有右键，走原来的底部弹层。position 为空即触屏长按。
+  void _showMessageActions(
+    AppState state,
+    ChatMessage message, {
+    Offset? position,
+  }) {
+    final List<_MsgAction> actions = _messageActions(state, message);
+    if (actions.isEmpty) return;
+
+    final bool desktop = position != null &&
+        (defaultTargetPlatform == TargetPlatform.windows ||
+            defaultTargetPlatform == TargetPlatform.macOS ||
+            defaultTargetPlatform == TargetPlatform.linux);
+    if (desktop) {
+      _showDesktopMenu(position, actions);
+    } else {
+      _showActionsSheet(actions);
+    }
+  }
+
+  /// 桌面右键菜单：用 showMenu 在鼠标位置弹出，样式跟随系统主题。
+  Future<void> _showDesktopMenu(Offset position, List<_MsgAction> actions) async {
+    final ThemeData theme = Theme.of(context);
+    final List<PopupMenuEntry<_MsgAction>> items = <PopupMenuEntry<_MsgAction>>[];
+    for (final _MsgAction a in actions) {
+      items.add(PopupMenuItem<_MsgAction>(
+        value: a,
+        child: ListTile(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          leading: a.icon,
+          title: Text(
+            a.label,
+            style: a.danger
+                ? TextStyle(color: theme.colorScheme.error)
+                : null,
+          ),
+          subtitle: a.subtitle == null
+              ? null
+              : Text(
+                  a.subtitle!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall,
+                ),
+        ),
+      ));
+    }
+    final _MsgAction? picked = await showMenu<_MsgAction>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        position.dx,
+        position.dy,
+        position.dx,
+        position.dy,
+      ),
+      items: items,
+      color: WispColors.surface(context),
+    );
+    if (picked != null) picked.onTap();
+  }
+
+  /// 触屏长按弹层：与桌面右键共用动作列表。
+  void _showActionsSheet(List<_MsgAction> actions) {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: WispColors.surface(context),
@@ -941,35 +1095,28 @@ class _ChatPageState extends State<ChatPage> {
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            const SizedBox(height: 10),
-            if (message.text.trim().isNotEmpty)
+            const SizedBox(height: 6),
+            for (final _MsgAction a in actions)
               ListTile(
-                leading: const Icon(Icons.copy_all_rounded),
-                title: const Text('复制文字'),
+                leading: a.icon,
+                title: Text(
+                  a.label,
+                  style: a.danger
+                      ? TextStyle(color: Theme.of(sheetContext).colorScheme.error)
+                      : null,
+                ),
+                subtitle: a.subtitle == null
+                    ? null
+                    : Text(
+                        a.subtitle!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                 onTap: () {
                   Navigator.of(sheetContext).pop();
-                  unawaited(_copy(message.text));
+                  a.onTap();
                 },
               ),
-            if (message.failed)
-              ListTile(
-                leading: const WispT1Icon(T1Glyph.send, size: 22),
-                title: const Text('重新发送'),
-                onTap: () {
-                  Navigator.of(sheetContext).pop();
-                  unawaited(_resend(state, message));
-                },
-              ),
-            ListTile(
-              leading: const Icon(Icons.delete_outline_rounded),
-              title: const Text('删除这条消息'),
-              subtitle: const Text('只删本地这一条，不影响对方'),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                state.deleteMessage(widget.peerKey, message.id);
-                _toast('已删除');
-              },
-            ),
             const SizedBox(height: 6),
           ],
         ),
